@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title data-translate-key="pageTitle">Mapa Eleições 2020 — Interativo</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --ui-bg: rgba(255,255,255,0.95);
+      --card-radius: 12px;
+      --accent: #0f172a;
+      --muted: #666;
+      --panel-width: 360px;
+      --small: 12px;
+      --font: 'Montserrat', sans-serif;
+    }
+    html,body,#map{height:100%;margin:0;font-family:var(--font);background:#f5f7fa}
+    
+    /* Main toolbar (top-right) */
+    .map-toolbar{
+      position:absolute; z-index:1200; right:12px; top:12px;
+      background:var(--ui-bg); border-radius:var(--card-radius);
+      padding:12px; box-shadow:0 10px 30px rgba(12,20,30,0.12);
+      width: 300px;
+    }
+    .map-toolbar h3{margin:0 0 8px;font-size:14px;font-weight:700}
+    .map-toolbar .row{display:flex; flex-direction:column; gap:8px}
+    .map-toolbar select, .map-toolbar input[type="text"]{
+      padding:8px 10px;border-radius:8px;border:1px solid #e6e9ef;
+      outline:none;font-size:14px;background:white;
+      width:100%;
+    }
+    .map-toolbar button{
+      padding:8px 10px;border-radius:8px;border:1px solid #d0d6e0;background:#f8fafc;
+      cursor:pointer;font-weight:600;
+    }
+    .map-toolbar label{font-size:13px;color:var(--muted);display:flex;gap:8px;align-items:center}
+    .credit{position:absolute; right:12px; bottom:12px; z-index:1200;background:var(--ui-bg); padding:8px 10px; border-radius:10px; font-size:12px; box-shadow:0 6px 20px rgba(12,20,30,0.06)}
+
+    /* FIXED RESULT PANEL (canto esquerdo inferior) */
+    .result-panel{
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      z-index:1200;
+      width: var(--panel-width);
+      max-width: calc(100% - 44px);
+      background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(250,250,250,0.98));
+      border-radius: 12px;
+      box-shadow: 0 18px 40px rgba(10,20,30,0.12);
+      padding: 12px;
+      display: none; /* hidden by default */
+      font-size: 13px;
+    }
+    .result-panel .title{font-weight:700; font-size:14px; margin-bottom:6px; color:#0f172a}
+    .result-panel .subtitle{font-size:12px;color:#6b7280;margin-bottom:8px}
+    .result-panel .candidates{display:flex;flex-direction:column;gap:6px; max-height:260px; overflow:auto; padding-right:6px}
+    .cand-row{
+      display:flex; align-items:center; gap:8px; padding:6px; border-radius:6px; background: #fff;
+      box-shadow: 0 2px 6px rgba(10,20,30,0.04);
+    }
+    .cand-swatch{width:12px;height:12px;border-radius:3px;flex:0 0 12px}
+    .cand-name{font-weight:700; font-size:13px; color:#0f172a; width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+    .cand-percent{margin-left:auto; font-weight:700}
+    .cand-votes{font-size:12px; color:var(--muted); margin-left:8px; width:60px; text-align:right}
+
+    .meta{ margin-top:8px; border-top:1px solid #eef1f6; padding-top:8px; font-size:12px; color:var(--muted) }
+    .meta-row{ display:flex; justify-content:space-between; gap:10px; margin-bottom:6px }
+    .meta .label{ color:#374151; font-weight:600 }
+
+    /* Novo contêiner para os painéis inferiores na direita */
+    .right-bottom-container {
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+        z-index: 1200;
+        display: flex;
+        flex-direction: column;
+        gap: 12px; /* Espaço entre os painéis */
+        align-items: flex-end; /* Alinha os itens à direita */
+    }
+
+    /* Estilo para o painel de seleção de filtro no canto inferior direito */
+    .filter-panel {
+        background: var(--ui-bg);
+        border-radius: var(--card-radius);
+        padding: 12px;
+        box-shadow: 0 10px 30px rgba(12, 20, 30, 0.12);
+        width: 300px;
+        display: none;
+    }
+    .filter-panel h3{margin:0 0 8px;font-size:14px;font-weight:700}
+    .filter-panel .row{display:flex; flex-direction:column; gap:8px}
+    .filter-panel button{
+      padding:8px 10px;border-radius:8px;border:1px solid #d0d6e0;background:#f8fafc;
+      cursor:pointer;font-weight:600;
+    }
+
+    /* small legend bottom */
+    .mini-legend{ 
+        background:var(--ui-bg); padding:8px 12px; border-radius:10px; 
+        box-shadow:0 10px 30px rgba(12,20,30,0.08); font-size:12px;
+        width: 300px;
+    }
+    
+    .badge-2v {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #15ff19;
+        color: #000;
+        font-weight: 700;
+        font-size: 11px;
+        margin-left: 6px;
+    }
+    /* small responsive */
+    @media (max-width:800px){
+      .map-toolbar{ width: 220px }
+      .result-panel{ width: calc(100% - 24px); left:12px; right:12px; bottom:12px }
+      .cand-name{ width:120px }
+      .right-bottom-container, .filter-panel, .mini-legend { width: 220px; }
+    }
+
+    /* NEW FILTER CONTROL PANEL (top-left) */
+    .filter-control{
+      position:absolute; z-index:1200; left:12px; top:12px;
+      background:var(--ui-bg); border-radius:var(--card-radius);
+      padding:12px; box-shadow:0 10px 30px rgba(12,20,30,0.12);
+      width: 200px;
+      display: none;
+    }
+    .filter-control h3{margin:0 0 8px;font-size:14px;font-weight:700}
+    .filter-control .row{display:flex; flex-direction:column; gap:8px}
+    .filter-control button{
+      padding:8px 10px;border-radius:8px;border:1px solid #d0d6e0;background:#f8fafc;
+      cursor:pointer;font-weight:600;
+      width: 100%;
+    }
+    .filter-control select{
+      padding:8px 10px;border-radius:8px;border:1px solid #e6e9ef;
+      outline:none;font-size:14px;background:white;
+      width:100%;
+    }
+    .filter-menu-btn {
+      position:absolute; z-index:1200; left:12px; top:12px;
+      padding:8px 12px;border-radius:10px;
+      background:var(--ui-bg); border:1px solid #d0d6e0;
+      cursor:pointer;
+      box-shadow:0 6px 20px rgba(12,20,30,0.06);
+    }
+    .filter-menu-btn:hover { background: #f0f2f5; }
+
+    /* highlight style for selected polygon */
+    .highlight-style { color: #111827 !important; opacity: 0.9 !important; }
+    /* remove default leaflet popup styling (we won't use popups) */
+    .leaflet-popup { display:none !important; }
+    
+    /* Tutorial Modal Styles */
+    .modal-overlay {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.6); z-index: 2000;
+        display: none; align-items: center; justify-content: center;
+    }
+    .modal-content {
+        background: white; padding: 25px; border-radius: 15px;
+        width: 90%; max-width: 600px; max-height: 80vh;
+        overflow-y: auto; position: relative;
+        box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+    }
+    .modal-close {
+        position: absolute; top: 15px; right: 15px;
+        border: none; background: #eee; border-radius: 50%;
+        width: 30px; height: 30px; font-weight: bold; font-size: 16px;
+        cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    .modal-content h2 { margin-top: 0; }
+    .modal-content h3 { margin-top: 20px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+    .modal-content p { line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <button id="filterMenuBtn" class="filter-menu-btn" data-translate-key="filtersButton">Filtros</button>
+
+  <div id="filterControlPanel" class="filter-control">
+    <h3 data-translate-key="performanceFiltersTitle">Filtros de Desempenho</h3>
+    <div class="row">
+      <select id="singleCandidateFilter">
+        <option value="" selected data-translate-key="selectCandidate">Selecionar Candidato</option>
+      </select>
+      <button id="resetFilterBtn" data-translate-key="clearFilters">Limpar Filtros</button>
+      <hr style="border:none; border-bottom:1px solid #eef1f6; margin:8px 0;">
+      <button id="whiteVotesBtn" data-translate-key="whiteVotes">Votos Brancos</button>
+      <button id="nullVotesBtn" data-translate-key="nullVotes">Votos Nulos</button>
+      <button id="participationBtn" data-translate-key="participation">Participação</button>
+    </div>
+  </div>
+
+  <div class="map-toolbar">
+    <h3 data-translate-key="mapTitle">Elecciones 2020 — Primera Vuelta</h3>
+    <div class="row">
+       <select id="langSelect" aria-label="Selecionar Idioma">
+            <option value="pt">Português</option>
+            <option value="es">Español</option>
+            <option value="en">English</option>
+        </select>
+      <select id="datasetSelect" aria-label="Selecionar nível">
+        <option value="Departamentos" selected>Departamentos</option>
+      </select>
+
+      <input id="searchInput" type="text" data-translate-key-placeholder="searchPlaceholder" placeholder="Buscar por nome…" autocomplete="off" />
+      <button id="searchBtn" type="button" data-translate-key="searchButton">Buscar</button>
+      <button id="tutorialBtn" type="button" data-translate-key="tutorialButton">Tutorial</button>
+
+      <label><input type="checkbox" id="labelToggle" checked /> <span data-translate-key="showLabels">Mostrar rótulos ao passar o mouse</span></label>
+      <label><input type="checkbox" id="fitOnLoad" checked /> <span data-translate-key="fitOnLoad">Ajustar extensão no primeiro carregamento</span></label>
+    </div>
+  </div>
+
+  <div class="credit" style="display:none;">Base: <span style="font-weight:700">OpenStreetMap</span> • Engine: <span style="font-weight:700">Leaflet</span></div>
+
+  <div id="resultPanel" class="result-panel" role="region" aria-live="polite"></div>
+
+  <div class="right-bottom-container">
+    <div id="filterSelectionPanel" class="filter-panel">
+      <h3 data-translate-key="filterPanelTitle">Ver dados de <span id="selectedDepName"></span></h3>
+      <div class="row">
+        <button id="showProvinciasBtn" data-translate-key="showProvinces">Ver Provincias</button>
+        <button id="showMunicipiosBtn" data-translate-key="showMunicipalities">Ver Municipios</button>
+        <button id="showRecintosBtn" data-translate-key="showPrecincts">Ver Recintos</button>
+        <button id="resetMapBtn" data-translate-key="backToNational">Voltar ao mapa nacional</button>
+      </div>
+    </div>
+    
+    <div id="miniLegend" class="mini-legend" data-translate-key="legendDefault">Legenda: use a barra inferior para ver candidatos</div>
+  </div>
+
+  <div id="tutorialModal" class="modal-overlay">
+      <div class="modal-content">
+          <button id="modalCloseBtn" class="modal-close">&times;</button>
+          <h2 data-translate-key="tutorialTitle">Como Usar o Mapa Interativo</h2>
+          
+          <h3 data-translate-key="tutorialNavTitle">Navegação Básica</h3>
+          <p data-translate-key="tutorialNavText">Use o scroll do mouse ou os botões de +/- no mapa para ampliar ou reduzir o zoom. Clique e arraste para mover o mapa.</p>
+          
+          <h3 data-translate-key="tutorialMainPanelTitle">Painel Principal (Canto Superior Direito)</h3>
+          <p data-translate-key="tutorialMainPanelText">Aqui você pode: selecionar o idioma, buscar uma região pelo nome e ativar/desativar as etiquetas de nomes que aparecem ao passar o mouse sobre as áreas.</p>
+          
+          <h3 data-translate-key="tutorialFiltersTitle">Filtros de Desempenho (Canto Superior Esquerdo)</h3>
+          <p data-translate-key="tutorialFiltersText">Clique no botão "Filtros" para abrir o menu. Você pode visualizar o mapa de acordo com o vencedor em cada região (padrão) ou filtrar para ver o desempenho percentual de um candidato específico, votos brancos, nulos ou a taxa de participação. Use "Limpar Filtros" para voltar à visualização padrão.</p>
+          
+          <h3 data-translate-key="tutorialInteractionTitle">Interagindo com o Mapa</h3>
+          <p data-translate-key="tutorialInteractionText">Clique em qualquer região (Departamento, Província, etc.) para ver os resultados detalhados no painel que aparecerá no canto inferior esquerdo. Ao clicar em um Departamento, um novo painel surgirá no canto inferior direito, permitindo que você navegue para níveis geográficos mais detalhados, como Províncias e Municípios daquela área.</p>
+      </div>
+  </div>
+
+
+  <script>
+    // ---------- I18N (TRANSLATIONS) ----------
+    const translations = {
+        pt: {
+            pageTitle: 'Mapa Eleições 2020 — Interativo',
+            mapTitle: 'Elecciones 2020 — Primera Vuelta',
+            searchPlaceholder: 'Buscar por nome…',
+            searchButton: 'Buscar',
+            tutorialButton: 'Tutorial',
+            showLabels: 'Mostrar rótulos ao passar o mouse',
+            fitOnLoad: 'Ajustar extensão no primeiro carregamento',
+            filterPanelTitle: 'Ver dados de',
+            showProvinces: 'Ver Provincias',
+            showMunicipalities: 'Ver Municipios',
+            showPrecincts: 'Ver Recintos',
+            backToNational: 'Voltar ao mapa nacional',
+            legendDefault: 'Legenda: use a barra inferior para ver candidatos',
+            legendTitle: 'Legenda',
+            candidates: 'Candidatos',
+            filtersButton: 'Filtros',
+            performanceFiltersTitle: 'Filtros de Desempenho',
+            selectCandidate: 'Selecionar Candidato',
+            clearFilters: 'Limpar Filtros',
+            whiteVotes: 'Votos Brancos',
+            nullVotes: 'Votos Nulos',
+            participation: 'Participação',
+            tutorialTitle: 'Como Usar o Mapa Interativo',
+            tutorialNavTitle: 'Navegação Básica',
+            tutorialNavText: 'Use o scroll do mouse ou os botões de +/- no mapa para ampliar ou reduzir o zoom. Clique e arraste para mover o mapa.',
+            tutorialMainPanelTitle: 'Painel Principal (Canto Superior Direito)',
+            tutorialMainPanelText: 'Aqui você pode: selecionar o idioma, buscar uma região pelo nome e ativar/desativar as etiquetas de nomes que aparecem ao passar o mouse sobre as áreas.',
+            tutorialFiltersTitle: 'Filtros de Desempenho (Canto Superior Esquerdo)',
+            tutorialFiltersText: 'Clique no botão "Filtros" para abrir o menu. Você pode visualizar o mapa de acordo com o vencedor em cada região (padrão) ou filtrar para ver o desempenho percentual de um candidato específico, votos brancos, nulos ou a taxa de participação. Use "Limpar Filtros" para voltar à visualização padrão.',
+            tutorialInteractionTitle: 'Interagindo com o Mapa',
+            tutorialInteractionText: 'Clique em qualquer região (Departamento, Província, etc.) para ver os resultados detalhados no painel que aparecerá no canto inferior esquerdo. Ao clicar em um Departamento, um novo painel surgirá no canto inferior direito, permitindo que você navegue para níveis geográficos mais detalhados, como Províncias e Municípios daquela área.',
+        },
+        es: {
+            pageTitle: 'Mapa Elecciones 2020 — Interactivo',
+            mapTitle: 'Elecciones 2020 — Primera Vuelta',
+            searchPlaceholder: 'Buscar por nombre…',
+            searchButton: 'Buscar',
+            tutorialButton: 'Tutorial',
+            showLabels: 'Mostrar etiquetas al pasar el mouse',
+            fitOnLoad: 'Ajustar extensión en la carga inicial',
+            filterPanelTitle: 'Ver datos de',
+            showProvinces: 'Ver Provincias',
+            showMunicipalities: 'Ver Municipios',
+            showPrecincts: 'Ver Recintos',
+            backToNational: 'Volver al mapa nacional',
+            legendDefault: 'Leyenda: use la barra inferior para ver candidatos',
+            legendTitle: 'Leyenda',
+            candidates: 'Candidatos',
+            filtersButton: 'Filtros',
+            performanceFiltersTitle: 'Filtros de Desempeño',
+            selectCandidate: 'Seleccionar Candidato',
+            clearFilters: 'Limpiar Filtros',
+            whiteVotes: 'Votos Blancos',
+            nullVotes: 'Votos Nulos',
+            participation: 'Participación',
+            tutorialTitle: 'Cómo Usar el Mapa Interactivo',
+            tutorialNavTitle: 'Navegación Básica',
+            tutorialNavText: 'Use la rueda del mouse o los botones +/- en el mapa para acercar o alejar. Haga clic y arrastre para mover el mapa.',
+            tutorialMainPanelTitle: 'Panel Principal (Esquina Superior Derecha)',
+            tutorialMainPanelText: 'Aquí puede: seleccionar el idioma, buscar una región por nombre y activar/desactivar las etiquetas de nombres que aparecen al pasar el mouse sobre las áreas.',
+            tutorialFiltersTitle: 'Filtros de Desempeño (Esquina Superior Izquierda)',
+            tutorialFiltersText: 'Haga clic en el botón "Filtros" para abrir el menú. Puede ver el mapa según el ganador en cada región (predeterminado) o filtrar para ver el rendimiento porcentual de un candidato específico, votos en blanco, nulos o la tasa de participación. Use "Limpiar Filtros" para volver a la vista predeterminada.',
+            tutorialInteractionTitle: 'Interactuando con el Mapa',
+            tutorialInteractionText: 'Haga clic en cualquier región (Departamento, Provincia, etc.) para ver los resultados detallados en el panel que aparecerá en la esquina inferior izquierda. Al hacer clic en un Departamento, aparecerá un nuevo panel en la esquina inferior derecha, permitiéndole navegar a niveles geográficos más detallados, como Provincias y Municipios de esa área.',
+        },
+        en: {
+            pageTitle: 'Map Elections 2020 — Interactive',
+            mapTitle: 'Elections 2020 — First Round',
+            searchPlaceholder: 'Search by name…',
+            searchButton: 'Search',
+            tutorialButton: 'Tutorial',
+            showLabels: 'Show labels on hover',
+            fitOnLoad: 'Fit extent on first load',
+            filterPanelTitle: 'View data for',
+            showProvinces: 'View Provinces',
+            showMunicipalities: 'View Municipalities',
+            showPrecincts: 'View Precincts',
+            backToNational: 'Back to national map',
+            legendDefault: 'Legend: use the bottom bar to see candidates',
+            legendTitle: 'Legend',
+            candidates: 'Candidates',
+            filtersButton: 'Filters',
+            performanceFiltersTitle: 'Performance Filters',
+            selectCandidate: 'Select Candidate',
+            clearFilters: 'Clear Filters',
+            whiteVotes: 'White Votes',
+            nullVotes: 'Null Votes',
+            participation: 'Participation',
+            tutorialTitle: 'How to Use the Interactive Map',
+            tutorialNavTitle: 'Basic Navigation',
+            tutorialNavText: 'Use the mouse scroll or the +/- buttons on the map to zoom in or out. Click and drag to move the map.',
+            tutorialMainPanelTitle: 'Main Panel (Top Right)',
+            tutorialMainPanelText: 'Here you can: select the language, search for a region by name, and enable/disable the name labels that appear when hovering over areas.',
+            tutorialFiltersTitle: 'Performance Filters (Top Left)',
+            tutorialFiltersText: 'Click the "Filters" button to open the menu. You can view the map by winner in each region (default) or filter to see the percentage performance of a specific candidate, white votes, null votes, or the participation rate. Use "Clear Filters" to return to the default view.',
+            tutorialInteractionTitle: 'Interacting with the Map',
+            tutorialInteractionText: 'Click on any region (Department, Province, etc.) to see detailed results in the panel that will appear in the bottom left corner. When you click on a Department, a new panel will appear in the bottom right, allowing you to navigate to more detailed geographic levels, such as Provinces and Municipalities in that area.',
+        }
+    };
+    let currentLang = 'pt';
+
+    function updateLanguage(lang) {
+        currentLang = lang;
+        document.documentElement.lang = lang;
+        const elements = document.querySelectorAll('[data-translate-key]');
+        elements.forEach(el => {
+            const key = el.getAttribute('data-translate-key');
+            if (translations[lang][key]) {
+                el.innerHTML = translations[lang][key];
+            }
+        });
+        const placeholderElements = document.querySelectorAll('[data-translate-key-placeholder]');
+        placeholderElements.forEach(el => {
+            const key = el.getAttribute('data-translate-key-placeholder');
+            if (translations[lang][key]) {
+                el.placeholder = translations[lang][key];
+            }
+        });
+        loadDataset(lastLevel, filteredDep);
+    }
+      
+    // ---------- CONFIG ----------
+    const candidatos = [
+        "Luis Arce (Movimiento al Socialismo)",
+        "Carlos Mesa (Comunidad Ciudadana)",
+        "Luis Fernando Camacho (Creemos)",
+        "Chi Hyun Chung (Frente Para la Victoria)",
+        "Feliciano Mamani (Partido de Acción Nacional Boliviano)"
+    ];
+    const cores_main = {
+        "Luis Arce (Movimiento al Socialismo)": "#143a82",
+        "Carlos Mesa (Comunidad Ciudadana)": "#ef6424",
+        "Luis Fernando Camacho (Creemos)": "#d02d69",
+        "Chi Hyun Chung (Frente Para la Victoria)": "#05654a",
+        "Feliciano Mamani (Partido de Acción Nacional Boliviano)": "#e80023"
+    };
+    const cores_recintos = Object.assign({}, cores_main);
+
+    const levelConfigs = {
+      'Departamentos': { file: 'Bolivia 1V 2020 Departamento.geojson', nameKeyGuess: ['DEPTO'], searchLabel: 'DEPTO', placeholder: 'Buscar Departamento', zoom: 6 },
+      'Provincias': { file: 'Bolivia 1V 2020 Provincias.geojson', nameKeyGuess: ['PROVINCIA'], searchLabel: 'PROVINCIA', placeholder: 'Buscar Provincia', zoom: 8 },
+      'Municipios': { file: 'Bolivia 1V 2020 Municipios.geojson', nameKeyGuess: ['MUNICIPIO'], searchLabel: 'MUNICIPIO', placeholder: 'Buscar Municipio', zoom: 12 },
+      'Recintos': { file: 'Bolivia 1V 2020 Recintos.geojson', nameKeyGuess: ['RECINTO'], searchLabel: 'RECINTO', placeholder: 'Buscar Recinto', zoom: 300 }
+    };
+    
+    const extraFilters = {
+        'Votos Brancos': { key: 'Percent_BLANCOS', tKey: 'whiteVotes' },
+        'Votos Nulos': { key: 'Percent_NULOS', tKey: 'nullVotes' },
+        'Participação': { key: 'Percent_Participacao', tKey: 'participation' }
+    };
+    const extraFilterColors = {
+        'Votos Brancos': '#475569',
+        'Votos Nulos': '#7c3aed',
+        'Participação': '#16a34a'
+    };
+    
+    const BOL_MIN_LONG = -69.6;
+    const BOL_MAX_LONG = -57.5;
+    const BOL_MIN_LAT = -22.9;
+    const BOL_MAX_LAT = -9.7;
+
+    // ---------- MAP ----------
+    const map = L.map('map', {
+      center: [-16.29, -63.59],
+      zoom: 5,
+      minZoom: 4
+    });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 20 }).addTo(map);
+
+    // ---------- UI refs ----------
+    const langSelect = document.getElementById('langSelect');
+    const tutorialBtn = document.getElementById('tutorialBtn');
+    const tutorialModal = document.getElementById('tutorialModal');
+    const modalCloseBtn = document.getElementById('modalCloseBtn');
+    const datasetSelect = document.getElementById('datasetSelect');
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const labelToggle = document.getElementById('labelToggle');
+    const fitOnLoad = document.getElementById('fitOnLoad');
+    const resultPanel = document.getElementById('resultPanel');
+    const filterSelectionPanel = document.getElementById('filterSelectionPanel');
+    const selectedDepName = document.getElementById('selectedDepName');
+    const showProvinciasBtn = document.getElementById('showProvinciasBtn');
+    const showMunicipiosBtn = document.getElementById('showMunicipiosBtn');
+    const showRecintosBtn = document.getElementById('showRecintosBtn');
+    const resetMapBtn = document.getElementById('resetMapBtn');
+    const filterMenuBtn = document.getElementById('filterMenuBtn');
+    const filterControlPanel = document.getElementById('filterControlPanel');
+    const singleCandidateFilter = document.getElementById('singleCandidateFilter');
+    const resetFilterBtn = document.getElementById('resetFilterBtn');
+    const whiteVotesBtn = document.getElementById('whiteVotesBtn');
+    const nullVotesBtn = document.getElementById('nullVotesBtn');
+    const participationBtn = document.getElementById('participationBtn');
+
+    // ---------- App state ----------
+    let geoLayer = null;
+    let searchIndex = [];
+    let lastHighlighted = null;
+    let lastLevel = 'Departamentos';
+    let filteredDep = null;
+    let currentFilter = { type: 'vencedor', key: null, name: null, color: null, max_value: 0 };
+    let maxValues = {};
+
+    // ---------- Helpers ----------
+    function hexToRgb(hex){ const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex); return m? {r:parseInt(m[1],16),g:parseInt(m[2],16),b:parseInt(m[3],16)} : {r:0,g:0,b:0}; }
+    function rgbToHex(r,g,b){ const ch=(c)=>{let h=Math.round(c).toString(16); return h.length==1?"0"+h:h }; return "#"+ch(r)+ch(g)+ch(b); }
+    function adjust_color(color, percent, level, max_percent){
+      if (percent === 0 || max_percent === 0) return '#f5f7fa';
+      let rgb = hexToRgb(color);
+      let factor = Math.sqrt(percent / max_percent);
+      
+      let newR = 255 - (255 - rgb.r) * factor;
+      let newG = 255 - (255 - rgb.g) * factor;
+      let newB = 255 - (255 - rgb.b) * factor;
+      
+      return rgbToHex(newR,newG,newB);
+    }
+
+    function pickNameProperty(props, guesses){
+      const keys = Object.keys(props).map(k => k.toLowerCase());
+      const found = guesses.map(g=>g.toLowerCase()).find(g=>keys.includes(g));
+      if(found) return Object.keys(props).find(k=>k.toLowerCase()===found);
+      for(const k of Object.keys(props)) if(typeof props[k]==='string' && props[k].length>0) return k;
+      return null;
+    }
+
+    function centerOfFeature(geom){
+      try{
+        if(!geom) return map.getCenter();
+        const t = geom.type;
+        if(t==='Point') return [geom.coordinates[1], geom.coordinates[0]];
+        if(t==='MultiPoint') { const p=geom.coordinates[0]; return [p[1], p[0]]; }
+        const c = turf.centroid({type:'Feature', geometry:geom});
+        return [c.geometry.coordinates[1], c.geometry.coordinates[0]];
+      }catch(e){ return map.getCenter(); }
+    }
+
+    function findLatLonKeys(props){
+      const latVariants = ['latitud','latitude','lat','y'];
+      const lonVariants = ['longitud','longitude','long','lng','x'];
+      const keys = Object.keys(props || {});
+      let latKey = null, lonKey = null;
+      for(const k of keys){
+        const kl = k.toLowerCase();
+        if(latKey === null && latVariants.includes(kl)) latKey = k;
+        if(lonKey === null && lonVariants.includes(kl)) lonKey = k;
+      }
+      return [latKey, lonKey];
+    }
+
+    function processar_dados(data, level){
+      data.features.forEach(f=>{
+        const props = f.properties || {};
+        candidatos.forEach(cand=>{
+          if(props.hasOwnProperty(cand)) props[cand] = parseFloat(props[cand]) || 0;
+        });
+        props.VALIDOS = parseFloat(props.VALIDOS) || 0;
+        props.BLANCOS = parseFloat(props.BLANCOS) || 0;
+        props.NULOS = parseFloat(props.NULOS) || 0;
+        props.EMITIDOS = parseFloat(props.EMITIDOS) || 0;
+        props.INSCRITOS = parseFloat(props.INSCRITOS) || 0;
+
+        candidatos.forEach(cand=>{
+          let col = `Percent_${cand.replace(/ /g,'_').replace(/\(/g,'').replace(/\)/g,'')}`;
+          props[col] = 0;
+          if(props.VALIDOS>0) props[col] = (props[cand]/props.VALIDOS)*100;
+        });
+        props.Percent_BLANCOS = props.EMITIDOS>0? (props.BLANCOS/props.EMITIDOS)*100 : 0;
+        props.Percent_NULOS = props.EMITIDOS>0? (props.NULOS/props.EMITIDOS)*100 : 0;
+        props.Percent_Participacao = props.INSCRITOS>0? (props.EMITIDOS/props.INSCRITOS)*100 : 0;
+
+        let percents = {};
+        candidatos.forEach(cand => {
+          let col = `Percent_${cand.replace(/ /g,'_').replace(/\(/g,'').replace(/\)/g,'')}`;
+          percents[cand] = props[col] || 0;
+        });
+        let maxp = Math.max(...Object.values(percents));
+        let winners = candidatos.filter(c => percents[c]===maxp);
+        props.vencedor = maxp>0? winners[0] : 'Tossup';
+        props.percent_vencedor = maxp;
+      });
+      return data;
+    }
+
+    function renderResultPanel(props, level, cores){
+      let title = '';
+      let subtitle = '';
+      if(level==='Departamentos'){ title = (props.DEPTO||'N/A').toUpperCase(); subtitle='(Departamento)'; }
+      else if(level==='Provincias'){ title = `${(props.PROVINCIA||'N/A').toUpperCase()}, ${props.DEPTO||'N/A'}`; subtitle='(Provincia, Departamento)'; }
+      else if(level==='Municipios'){ title = `${(props.MUNICIPIO||'N/A').toUpperCase()}, ${props.PROVINCIA||'N/A'}, ${props.DEPTO||'N/A'}`; subtitle='(Municipio, Provincia, Departamento)'; }
+      else { title = `${(props.RECINTO||'N/A')} , ${props.MUNICIPIO||''}`; subtitle='(Recinto, Municipio)'; }
+
+      const cand_list = candidatos.map(cand=>{
+        const col = `Percent_${cand.replace(/ /g,'_').replace(/\(/g,'').replace(/\)/g,'')}`;
+        const percent = +(props[col]||0);
+        const votos = props[cand]||0;
+        return {cand, percent, votos, cor: cores[cand]||'#999'};
+      }).sort((a,b)=>b.percent-a.percent);
+
+      let html = `<div class="title">${title}</div><div class="subtitle">${subtitle}</div><div class="candidates">`;
+      cand_list.forEach(item=>{
+        const percentStr = item.percent.toFixed(2).replace('.',',') + '%';
+        const votesStr = (item.votos||0).toLocaleString('pt-BR');
+        let badge = '';
+        if(item.cand.includes('Luis Arce')) {
+            badge = `<span class="badge-2v">✔</span>`;
+        }
+        html += `<div class="cand-row">
+                  <div class="cand-swatch" style="background:${item.cor}"></div>
+                  <div class="cand-name">${item.cand.split(' (')[0]}${badge}</div>
+                  <div class="cand-percent">${percentStr}</div>
+                  <div class="cand-votes">${votesStr}</div>
+                 </div>`;
+      });
+      html += `</div>`;
+
+      const b = (props.BLANCOS||0).toLocaleString('pt-BR');
+      const n = (props.NULOS||0).toLocaleString('pt-BR');
+      const validos = (props.VALIDOS||0).toLocaleString('pt-BR');
+      const emit = (props.EMITIDOS||0).toLocaleString('pt-BR');
+      const inscr = (props.INSCRITOS||0).toLocaleString('pt-BR');
+      const pb = (props.Percent_BLANCOS||0).toFixed(2).replace('.',',') + '%';
+      const pn = (props.Percent_NULOS||0).toFixed(2).replace('.',',') + '%';
+      const pp = (props.Percent_Participacao||0).toFixed(2).replace('.',',') + '%';
+
+      html += `<div class="meta">
+                <div class="meta-row"><div class="label" data-translate-key="whiteVotes">Votos Brancos</div><div>${pb} • ${b}</div></div>
+                <div class="meta-row"><div class="label" data-translate-key="nullVotes">Votos Nulos</div><div>${pn} • ${n}</div></div>
+                <div style="border-top:1px solid #eef1f6; padding-top:8px; margin-top:6px;">
+                  <div class="meta-row"><div class="label">Votos Válidos</div><div>${validos}</div></div>
+                  <div class="meta-row"><div class="label">Votos Emitidos</div><div>${emit}</div></div>
+                  <div class="meta-row"><div class="label">Inscritos</div><div>${inscr}</div></div>
+                  <div class="meta-row"><div class="label" data-translate-key="participation">Participação</div><div>${pp}</div></div>
+                </div>
+               </div>`;
+
+      const resultPanelEl = document.getElementById('resultPanel');
+      resultPanelEl.innerHTML = html;
+      resultPanelEl.querySelector('[data-translate-key="whiteVotes"]').innerHTML = translations[currentLang].whiteVotes;
+      resultPanelEl.querySelector('[data-translate-key="nullVotes"]').innerHTML = translations[currentLang].nullVotes;
+      resultPanelEl.querySelector('[data-translate-key="participation"]').innerHTML = translations[currentLang].participation;
+
+      resultPanel.style.display = 'block';
+    }
+
+    function hideResultPanel(){ resultPanel.style.display = 'none'; resultPanel.innerHTML = ''; }
+
+    function highlightLayer(layer, level){
+      if(lastHighlighted && lastHighlighted !== layer){
+        try { geoLayer.resetStyle(lastHighlighted); } catch(e){}
+      }
+      lastHighlighted = layer;
+      try {
+        const style = { weight: 2.5, color: '#111827', fillOpacity: 0.95 };
+        layer.setStyle && layer.setStyle(style);
+        if (layer.bringToFront) layer.bringToFront();
+      } catch(e){}
+    }
+
+    function buildSearchIndex(gj, level, nameKeyGuess){
+      searchIndex = [];
+      gj.features.forEach(f=>{
+        const props = f.properties || {};
+        const nameKey = pickNameProperty(props, nameKeyGuess) || levelConfigs[level].searchLabel;
+        const nameVal = props[nameKey] ? String(props[nameKey]).trim() : '';
+        props._searchKey = nameKey;
+        props._searchName = nameVal;
+        if(nameVal){
+          searchIndex.push({ nameNormalized: nameVal.toLowerCase(), layerRef: null, props, feat: f });
+        }
+      });
+    }
+
+    function linkLayersToIndex(){
+      if(!geoLayer) return;
+      geoLayer.eachLayer(layer=>{
+        const f = layer.feature;
+        if(!f || !f.properties) return;
+        const searchName = (f.properties._searchName || '').toLowerCase();
+        for(const it of searchIndex){
+          if(it.nameNormalized === searchName && !it.layerRef){
+            it.layerRef = layer;
+            break;
+          }
+        }
+      });
+    }
+
+    function doSearch(){
+      const q = searchInput.value.trim().toLowerCase();
+      if(q.length < 2) return;
+      let found = searchIndex.find(it => it.nameNormalized === q) || searchIndex.find(it => it.nameNormalized.includes(q)) || searchIndex.find(it => it.nameNormalized.split(' ').some(w=>w.startsWith(q)));
+      if(!found){
+        alert('Nenhum resultado encontrado');
+        return;
+      }
+      const layer = found.layerRef;
+      const props = found.props;
+      const level = datasetSelect.value;
+      const zoom = levelConfigs[level].zoom || map.getZoom();
+      const center = centerOfFeature(found.feat.geometry);
+      if(center) map.setView(center, zoom);
+      if(layer) highlightLayer(layer, level);
+      const cores = (level === 'Recintos') ? cores_recintos : cores_main;
+      renderResultPanel(props, level, cores);
+    }
+
+    async function calculateMaxValues() {
+        if (Object.keys(maxValues).length > 0) return;
+        let allData = [];
+        for (const level in levelConfigs) {
+            try {
+                const res = await fetch(levelConfigs[level].file);
+                let gj = await res.json();
+                gj = processar_dados(gj, level);
+                allData = allData.concat(gj.features);
+            } catch (e) {
+                console.error(`Failed to load or process ${levelConfigs[level].file}`, e);
+            }
+        }
+        const allKeys = [
+            ...candidatos.map(c => `Percent_${c.replace(/ /g,'_').replace(/\(/g,'').replace(/\)/g,'')}`),
+            'Percent_BLANCOS',
+            'Percent_NULOS',
+            'Percent_Participacao'
+        ];
+        allKeys.forEach(key => {
+            maxValues[key] = 0;
+            allData.forEach(feature => {
+                if (feature.properties && feature.properties[key] > maxValues[key]) {
+                    maxValues[key] = feature.properties[key];
+                }
+            });
+        });
+    }
+
+    async function loadDataset(level, filterDepName = null){
+      try {
+        lastLevel = level;
+        const cfg = levelConfigs[level];
+        const res = await fetch(cfg.file);
+        if(!res.ok) throw new Error(`Falha ao carregar ${cfg.file} (${res.status})`);
+        let gj = await res.json();
+        if(!gj || !gj.features || gj.features.length===0) throw new Error('GeoJSON vazio');
+
+        filteredDep = filterDepName;
+
+        if (filteredDep) {
+          gj.features = gj.features.filter(f => f.properties.DEPTO === filteredDep);
+          if (gj.features.length === 0) {
+            alert('Nenhum dado encontrado para o departamento selecionado neste nível.');
+            resetMapToNational();
+            return;
+          }
+        }
+        
+        gj = processar_dados(gj, level);
+        const cores = (level === 'Recintos') ? cores_recintos : cores_main;
+
+        if(geoLayer) { map.removeLayer(geoLayer); geoLayer = null; searchIndex = []; lastHighlighted = null; hideResultPanel(); }
+
+        if(level === 'Departamentos'){
+          gj.features.forEach(f=>{
+            try{ f.geometry = turf.simplify(f.geometry, { tolerance: 0.01, highQuality: false }); }catch(e){}
+          });
+        }
+        if(level === 'Provincias'){
+          gj.features.forEach(f=>{
+            try{ f.geometry = turf.simplify(f.geometry, { tolerance: 0.005, highQuality: true }); }catch(e){}
+          });
+        }
+        if(level === 'Municipios'){
+          gj.features.forEach(f=>{
+            try{ f.geometry = turf.simplify(f.geometry, { tolerance: 0.0009, highQuality: true }); }catch(e){}
+          });
+        }
+        
+        let layerData = gj;
+        if(level === 'Recintos'){
+          try{
+            layerData = JSON.parse(JSON.stringify(gj));
+            let sampleLatKey = null, sampleLonKey = null;
+            for(const f of layerData.features){
+              const [lk, ok] = findLatLonKeys(f.properties || {});
+              if(lk && ok){ sampleLatKey = lk; sampleLonKey = ok; break; }
+            }
+
+            if(sampleLatKey && sampleLonKey){
+              layerData.features.forEach(f=>{
+                const p = f.properties || {};
+                let lat = parseFloat(p[sampleLatKey]);
+                let lon = parseFloat(p[sampleLonKey]);
+                if(!isFinite(lat) || !isFinite(lon)){
+                  try{ const c = turf.centroid(f); lon = c.geometry.coordinates[0]; lat = c.geometry.coordinates[1]; }catch(e){}
+                }
+                if(Math.abs(lat) > 90 && Math.abs(lon) <= 90){ const tmp = lat; lat = lon; lon = tmp; }
+                f.geometry = { type: 'Point', coordinates: [lon, lat] };
+              });
+            }
+          }catch(e){ layerData = gj; }
+        }
+        
+        const geoOptions = {
+          onEachFeature: function(feature, layer){
+            const nameKey = pickNameProperty(feature.properties||{}, cfg.nameKeyGuess);
+            const label = nameKey ? feature.properties[nameKey] : '';
+            if(labelToggle.checked && label){
+              layer.bindTooltip(label, { className:'custom-tooltip', direction:'auto', sticky:false });
+            }
+            layer.on('click', function(e){
+              highlightLayer(layer, level);
+              renderResultPanel(feature.properties, level, cores);
+              
+              if (level === 'Departamentos') {
+                  const depName = feature.properties.DEPTO;
+                  filteredDep = depName;
+                  selectedDepName.textContent = depName;
+                  filterSelectionPanel.style.display = 'block';
+              }
+            });
+            layer.on('mouseover', function(e){
+              try{ layer.setStyle && layer.setStyle({ weight: 2.2, fillOpacity: 0.85 }); }catch(e){}
+            });
+            layer.on('mouseout', function(e){
+              try{ if(layer !== lastHighlighted) geoLayer.resetStyle(layer); }catch(e){}
+            });
+          }
+        };
+        
+        if (currentFilter.type === 'vencedor') {
+            geoOptions.style = function(feature){
+                const props = feature.properties || {};
+                const vencedor = props.vencedor;
+                if(vencedor === 'Tossup') return { fillColor:'#cbd5e1', fillOpacity:0.7, color:'#ffffff', weight:0.8 };
+                const base = cores[vencedor] || '#9ca3af';
+                const fill = adjust_color(base, props.percent_vencedor||0, level, 100);
+                return { fillColor: fill, fillOpacity: 0.7, color: 'white', weight: 0.8 };
+            };
+            if (level === 'Recintos') {
+              geoOptions.pointToLayer = function(feature, latlng){
+                const props = feature.properties || {};
+                const base = cores[props.vencedor] || '#9ca3af';
+                const fill = adjust_color(base, props.percent_vencedor||0, level, 100);
+                return L.circleMarker(latlng, { radius:4, fillColor: fill, fillOpacity:0.9, stroke:false });
+              };
+            }
+        } else {
+            geoOptions.style = function(feature){
+                const props = feature.properties || {};
+                const percent = props[currentFilter.key] || 0;
+                const base = currentFilter.color;
+                const fill = adjust_color(base, percent, level, currentFilter.max_value);
+                return { fillColor: fill, fillOpacity: 0.7, color: 'white', weight: 0.8 };
+            };
+            if (level === 'Recintos') {
+              geoOptions.pointToLayer = function(feature, latlng){
+                const props = feature.properties || {};
+                const percent = props[currentFilter.key] || 0;
+                const base = currentFilter.color;
+                const fill = adjust_color(base, percent, level, currentFilter.max_value);
+                return L.circleMarker(latlng, { radius:4, fillColor: fill, fillOpacity:0.9, stroke:false });
+              };
+            }
+        }
+
+        geoLayer = L.geoJSON(layerData, geoOptions).addTo(map);
+
+        if(fitOnLoad.checked && !filteredDep){
+          try{
+            const bounds = geoLayer.getBounds();
+            if(bounds.isValid()) map.fitBounds(bounds, {padding:[20,20]});
+          }catch(e){}
+        } else if (filteredDep) {
+            const bounds = geoLayer.getBounds();
+            if(bounds.isValid()) map.fitBounds(bounds, {padding:[20,20]});
+        }
+
+        buildSearchIndex(layerData, level, cfg.nameKeyGuess);
+        linkLayersToIndex();
+
+        let legendHTML = `<div style="font-weight:700">${translations[currentLang].legendTitle}</div>`;
+        if (currentFilter.type === 'vencedor') {
+            legendHTML += `<div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap">`;
+            legendHTML += candidatos.map(c=>`<div style="background:${(level==='Recintos'?cores_recintos:cores_main)[c]}; padding:6px 8px; color:white; border-radius:8px; font-weight:700; font-size:12px">${c.split(' (')[0]}</div>`).join('');
+            legendHTML += `</div>`;
+        } else {
+            const legendColor = currentFilter.color;
+            let legendTitle = '';
+            if (currentFilter.type === 'single') {
+                legendTitle = currentFilter.name;
+            } else {
+                legendTitle = translations[currentLang][currentFilter.name];
+            }
+            
+            legendHTML += `<div style="margin-top:6px; display:flex; align-items:center; gap:8px;">
+                            <div style="width:20px; height:20px; border-radius:4px; background-color:${legendColor};"></div>
+                            <div>${legendTitle}</div>
+                           </div>`;
+        }
+        document.getElementById('miniLegend').innerHTML = legendHTML;
+
+      } catch(err){
+        console.error(err);
+        alert(err.message || 'Erro ao carregar camada');
+      }
+    }
+
+    function resetMapToNational() {
+        filteredDep = null;
+        filterSelectionPanel.style.display = 'none';
+        
+        const options = datasetSelect.options;
+        for (let i = options.length - 1; i > 0; i--) {
+            datasetSelect.remove(i);
+        }
+        datasetSelect.value = 'Departamentos';
+
+        loadDataset('Departamentos', null);
+    }
+    
+    function updateSelectValue(level) {
+      const options = datasetSelect.options;
+      let exists = false;
+      for (let i = 0; i < options.length; i++) {
+        if (options[i].value === level) {
+            exists = true;
+            break;
+        }
+      }
+      if (!exists) {
+        const newOption = document.createElement('option');
+        newOption.value = level;
+        newOption.text = level;
+        datasetSelect.add(newOption);
+      }
+      datasetSelect.value = level;
+    }
+
+    function applyFilter(type, name = null) {
+      let key, color, max_value, filterName;
+      
+      if (type === 'vencedor') {
+        key = null;
+        color = null;
+        max_value = 100;
+        filterName = null;
+      } else if (type === 'single') {
+        key = `Percent_${name.replace(/ /g,'_').replace(/\(/g,'').replace(/\)/g,'')}`;
+        color = cores_main[name];
+        max_value = maxValues[key] || 100;
+        filterName = name.split(' (')[0];
+      } else { // 'extra'
+        key = extraFilters[name].key;
+        color = extraFilterColors[name];
+        max_value = maxValues[key] || 100;
+        filterName = extraFilters[name].tKey;
+      }
+      currentFilter = { type, key, name: filterName, color, max_value };
+      loadDataset(lastLevel, filteredDep);
+    }
+
+    function clearFilter() {
+      applyFilter('vencedor');
+      singleCandidateFilter.value = '';
+    }
+
+    // ---------- listeners ----------
+    langSelect.addEventListener('change', (e) => updateLanguage(e.target.value));
+    
+    tutorialBtn.addEventListener('click', () => { tutorialModal.style.display = 'flex'; });
+    modalCloseBtn.addEventListener('click', () => { tutorialModal.style.display = 'none'; });
+    tutorialModal.addEventListener('click', (e) => { if(e.target === tutorialModal) tutorialModal.style.display = 'none'; });
+
+    datasetSelect.addEventListener('change', ()=> {
+        if (datasetSelect.value === 'Departamentos') {
+            resetMapToNational();
+        } else {
+            loadDataset(datasetSelect.value, filteredDep);
+        }
+    });
+
+    labelToggle.addEventListener('change', ()=> loadDataset(lastLevel, filteredDep));
+
+    searchInput.addEventListener('keydown', (e)=> { if(e.key === 'Enter') doSearch(); });
+    searchBtn.addEventListener('click', ()=> doSearch());
+    
+    showProvinciasBtn.addEventListener('click', () => {
+        updateSelectValue('Provincias');
+        loadDataset('Provincias', filteredDep);
+    });
+    showMunicipiosBtn.addEventListener('click', () => {
+        updateSelectValue('Municipios');
+        loadDataset('Municipios', filteredDep);
+    });
+    showRecintosBtn.addEventListener('click', () => {
+        updateSelectValue('Recintos');
+        loadDataset('Recintos', filteredDep);
+    });
+    resetMapBtn.addEventListener('click', resetMapToNational);
+
+    filterMenuBtn.addEventListener('click', () => {
+      filterControlPanel.style.display = filterControlPanel.style.display === 'block' ? 'none' : 'block';
+    });
+    singleCandidateFilter.addEventListener('change', (e) => {
+      const selectedCandidate = e.target.value;
+      if (selectedCandidate) {
+        applyFilter('single', selectedCandidate);
+      } else {
+        clearFilter();
+      }
+    });
+    resetFilterBtn.addEventListener('click', clearFilter);
+    whiteVotesBtn.addEventListener('click', () => applyFilter('extra', 'Votos Brancos'));
+    nullVotesBtn.addEventListener('click', () => applyFilter('extra', 'Votos Nulos'));
+    participationBtn.addEventListener('click', () => applyFilter('extra', 'Participação'));
+
+    function populateCandidateFilter() {
+        candidatos.forEach(cand => {
+            const option = document.createElement('option');
+            option.value = cand;
+            option.text = cand.split(' (')[0];
+            singleCandidateFilter.appendChild(option);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        populateCandidateFilter();
+        updateLanguage(currentLang);
+        calculateMaxValues().then(() => {
+            loadDataset('Departamentos', null);
+        });
+    });
+
+    window.__app = { map, loadDataset, doSearch, renderResultPanel, hideResultPanel };
+  </script>
+</body>
+</html>

@@ -1,0 +1,1744 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Simulador 2ª Vuelta — Elecciones Bolivia 2025</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{ --ui-bg: rgba(255,255,255,0.96); --card-radius:12px; --accent:#0f172a; --muted:#6b7280; --panel-width:360px; --font:'Montserrat',sans-serif }
+html,body{height:100%;margin:0;font-family:var(--font);background:#f5f7fa}
+/* toolbar */
+.map-toolbar{position:absolute; left:12px; top:12px; z-index:1300; background:var(--ui-bg); padding:12px; border-radius:12px; box-shadow:0 10px 30px rgba(12,20,30,0.12); width:320px}
+.map-toolbar h3{margin:0 0 8px;font-size:14px}
+.map-toolbar .row{display:flex;flex-direction:column;gap:8px}
+.map-toolbar select,input[type='text']{padding:8px;border-radius:8px;border:1px solid #e6e9ef;background:white}
+.map-toolbar button{padding:8px;border-radius:8px;border:1px solid #d0d6e0;background:#f8fafc;cursor:pointer}
+.map-toolbar .small{font-size:12px;color:var(--muted)}
+.map-toolbar select:disabled, .map-toolbar button:disabled { background-color: #e9ecef; cursor: not-allowed; opacity: 0.7; }
+#exportControls { margin-top: 12px; padding-top: 12px; border-top: 1px solid #e6e9ef; display: flex; flex-direction: column; gap: 8px; }
+
+/* result panel */
+.result-panel{position:absolute;left:12px;bottom:396px;z-index:1201;width:var(--panel-width);max-width:calc(100% - 44px);background:linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,250,0.98));border-radius:12px;box-shadow:0 18px 40px rgba(10,20,30,0.12);padding:12px;display:none;font-size:13px}
+.result-panel .title{font-weight:700;font-size:14px}
+
+/* simulation panel */
+.sim-panel{position:absolute;right:12px;top:12px;z-index:1400;width:380px;background:var(--ui-bg);border-radius:12px;padding:12px;box-shadow:0 16px 40px rgba(12,20,30,0.12);max-height:calc(100vh - 24px);overflow-y:auto;overflow-x:hidden}
+.sim-panel h4{margin:0 0 8px;font-size:14px}
+.sim-section{border-bottom: 1px solid #eef1f6; padding-bottom: 12px; margin-bottom: 12px;}
+.sim-section:last-of-type{border-bottom:none; margin-bottom: 0;}
+.sim-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.slider-label{flex-basis:120px; font-size:13px;}
+.slider-val{flex-basis:120px; text-align:right; font-weight:600;}
+.slider-val .small{ color: var(--muted); font-weight: 400; }
+.slider{width:100%}
+.small{font-size:12px;color:var(--muted)}
+
+/* tutorial modal */
+.modal-backdrop{position:fixed;inset:0;background:rgba(10,15,20,0.45);z-index:1600;display:none;align-items:center;justify-content:center}
+.modal{width:760px;max-width:94%;background:white;border-radius:12px;padding:18px;box-shadow:0 30px 80px rgba(0,0,0,0.25);max-height:86vh;overflow:auto}
+.modal h3{margin-top:0}
+.modal .step{margin-bottom:12px}
+
+/* national panel */
+.national-panel{position:absolute;left:12px;bottom:12px;z-index:1200;width:var(--panel-width);background:linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,250,250,0.98));border-radius:12px;box-shadow:0 18px 40px rgba(10,20,30,0.12);padding:12px;display:block;font-size:13px}
+.national-panel .title{font-weight:700;font-size:14px}
+
+/* legend above credit */
+.mini-legend{position:absolute;right:12px;bottom:12px;z-index:1201;background:var(--ui-bg);padding:8px 12px;border-radius:10px;box-shadow:0 10px 30px rgba(12,20,30,0.08);font-size:12px}
+.credit{position:absolute;right:12px;bottom:12px;z-index:1200;background:var(--ui-bg); padding:8px 10px; border-radius:10px; font-size:12px; box-shadow:0 6px 20px rgba(12,20,30,0.06)}
+
+/* loading overlay */
+.loading{position:fixed;inset:0;z-index:2000;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,0.6)}
+.loader{width:64px;height:64px;border-radius:50%;border:6px solid rgba(0,0,0,0.06);border-top-color:#0f172a;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* tooltip & small responsive */
+.leaflet-popup-content{font-family:var(--font);font-size:13px}
+@media (max-width:900px){.map-toolbar{width:220px}.sim-panel{width:calc(100% - 24px);right:12px;left:12px;top:12px}}
+.winner-badge{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#16a34a;color:white;font-weight:700;margin-left:8px;font-size:12px}
+html, body, #map {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+.disabled-slider { opacity: 0.4; pointer-events: none; }
+.transfer-group, .recovery-group { border: 1px solid #e0e0e0; border-radius: 8px; padding: 8px; margin-bottom: 12px; }
+.transfer-group h6, .recovery-group h6 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.slider-container { display: flex; align-items: center; gap: 8px; }
+.transfer-slider-label { flex-basis: 80px; flex-shrink: 0; text-align: left; font-size: 12px; }
+.abst-total { text-align: right; font-size: 11px; margin-top: 4px; padding-right: 4px; font-weight: 600; }
+.abst-total.over { color: #d90429; }
+
+/* Painel de pré-visualização */
+#simPreviewPanel, #nationalPreviewPanel {
+    background-color: #f0f4f8;
+    border: 1px solid #d1d9e2;
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 15px;
+}
+#simPreviewPanel h5, #nationalPreviewPanel h5 { margin: 0 0 8px; font-size: 14px; color: var(--accent); }
+#simPreviewPanel .small, #nationalPreviewPanel .small { font-size: 11px; }
+#simPreviewPanel .result-row, #nationalPreviewPanel .result-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+#simPreviewPanel .result-row .cand-name, #nationalPreviewPanel .result-row .cand-name { font-weight: 600; }
+#simPreviewPanel .result-row .cand-pct, #nationalPreviewPanel .result-row .cand-pct { font-weight: 700; font-size: 14px; }
+#simPreviewPanel .result-row .cand-votes, #nationalPreviewPanel .result-row .cand-votes { color: var(--muted); }
+#preview-winner-badge {
+    display: inline-block;
+    width: 14px; height: 14px;
+    line-height: 14px;
+    border-radius: 50%;
+    background: #16a34a; color: white;
+    font-weight: 700; font-size: 10px;
+    text-align: center;
+    margin-left: 5px;
+}
+
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="map-toolbar" role="region">
+  <h3 id="toolbarTitle">Simulador 2ª Vuelta — Elecciones Bolivia 2025</h3>
+  <div class="row">
+    <select id="datasetSelect" aria-label="Seleccionar nivel">
+      <option value="Departamentos">Departamentos</option>
+      <option value="Municipios">Municípios</option>
+    </select>
+    <div style="display:flex;gap:8px">
+      <button id="openSim" type="button">Abrir panel de simulação</button>
+      <button id="openTutorial" type="button">Tutorial</button>
+    </div>
+    <button id="clearFilterBtn" type="button" style="display:none;">Limpar Filtro / Ver País Inteiro</button>
+    <label class="small" id="fitLabel"><input type="checkbox" id="fitOnLoad" checked /> Ajustar extensão ao carregar</label>
+    <label class="small" id="simpLabel">Simplificação (nível): <select id="simpLevel"><option value="auto">Auto</option><option value="low">Baixa (mais fiel)</option><option value="medium">Média</option><option value="high">Alta (mais veloz)</option></select></label>
+    <select id="langSelect">
+      <option value="pt" selected>Português</option>
+      <option value="es">Español</option>
+      <option value="en">English</option>
+    </select>
+    <div id="exportControls">
+      <button id="downloadImageBtn" disabled>Baixar Imagem (Mapa)</button>
+      <button id="downloadXlsxBtn" disabled>Baixar Planilha (XLSX)</button>
+    </div>
+  </div>
+</div>
+
+<div class="sim-panel" id="simPanel" style="display:none">
+  <h4 id="simTitle">Simulação Global</h4>
+  <div class="small" id="finalistsText">Finalistas detectados: <strong id="finalistaA">Tuto Quiroga</strong> vs <strong id="finalistaB">Rodrigo Paz Pereira</strong></div>
+  
+  <div class="sim-mode-toggle">
+    <div class="small" id="simModeLabel">Modo de Simulação</div>
+    <select id="simModeSelect">
+      <option value="global">Global (Todos os Departamentos)</option>
+      <option value="per_dept">Detalhado (Departamento por Departamento)</option>
+    </select>
+  </div>
+
+  <div id="perDeptFilterContainer" style="display:none;margin-bottom:10px;">
+    <div class="small" id="selectDeptLabel">Selecione o Departamento para ajustar</div>
+    <select id="departmentFilter">
+      <option value="__NONE__" disabled selected>-- Selecione um Departamento --</option>
+    </select>
+    <div class="small" id="deptProgress" style="margin-top:4px;"></div>
+  </div>
+  
+  <div id="transferSection" class="sim-section">
+      <h5 id="transferTitle">Transferência de Votos dos Derrotados</h5>
+      <p class="small" id="transferDesc">
+          Ajuste como os votos dos candidatos eliminados serão redistribuídos.
+      </p>
+      <div id="simTransferContent"></div>
+  </div>
+
+  <div id="retentionSection" class="sim-section">
+      <h5 id="retentionTitle">Retenção dos Finalistas</h5>
+      <p class="small" id="retentionDesc">Porcentagem dos votos originais dos finalistas que permanecem com eles (o restante é considerado abstenção).</p>
+      <div class="sim-row">
+          <div class="slider-label" id="lblRetAGlobal">Retenção — <span id="lblRetA">Tuto</span></div>
+          <input id="retA" type="range" min="0" max="100" value="100" class="slider" />
+          <div class="slider-val" id="valRetA">100%</div>
+      </div>
+      <div class="sim-row">
+          <div class="slider-label" id="lblRetBGlobal">Retenção — <span id="lblRetB">Rodrigo</span></div>
+          <input id="retB" type="range" min="0" max="100" value="100" class="slider" />
+          <div class="slider-val" id="valRetB">100%</div>
+      </div>
+  </div>
+
+  <div id="recoverySection" class="sim-section">
+      <h5 id="recoveryTitle">Recuperação de votos perdidos (1º Turno)</h5>
+      <div id="recuperacaoDesc" class="small">Recupere parte dos votos brancos, nulos e abstenções do primeiro turno e distribua-os entre os finalistas.</div>
+      <div id="simRecoveryContent"></div>
+  </div>
+
+  <div id="simPreviewPanel">
+      <h5 id="previewTitle">Pré-visualização (Departamento)</h5>
+      <div id="previewContent">Selecione um modo e ajuste os sliders para ver a prévia.</div>
+  </div>
+
+  <div id="nationalPreviewPanel" style="display:none;">
+      <h5 id="nationalPreviewTitle">Pré-visualização Nacional</h5>
+      <div id="nationalPreviewContent"></div>
+  </div>
+  
+  <div style="display:flex;gap:8px;margin-top:12px">
+    <button id="applySim" type="button">Aplicar simulação (atualiza mapa)</button>
+    <button id="resetSim" type="button">Resetar</button>
+  </div>
+</div>
+
+<div id="resultPanel" class="result-panel" role="region" aria-live="polite"></div>
+<div id="miniLegend" class="mini-legend">Leyenda</div>
+<div class="credit">Base: <strong>OpenStreetMap</strong> • Engine: <strong>Leaflet</strong></div>
+
+<div id="nationalPanel" class="national-panel" aria-live="polite"></div>
+
+<div id="modalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true">
+  <div class="modal" role="document">
+    <h3 id="tutorialTitle">Cómo usar el Simulador — Paso a paso</h3>
+    <div id="tutorialSteps"></div>
+    <div style="text-align:right;margin-top:8px"><button id="closeModal" type="button">Cerrar</button></div>
+  </div>
+</div>
+
+<div id="loading" class="loading"><div class="loader"></div></div>
+
+<script>
+/* Nota importante: Para carregar arquivos GeoJSON locais, usa um servidor web local como a extensão Live Server de VSCode. Abrir o HTML diretamente como file:// fallará debido a restrições de CORS. Asegúrate de que los archivos GeoJSON estén en el mismo directorio que este HTML e que o servidor esteja executando. */
+// ---------- CONFIG ----------
+const finalistas = ["Tuto Quiroga (Alianza Libre)", "Rodrigo Paz Pereira (Partido Democrata Cristiano)"];
+const Aname = finalistas[0];
+const Bname = finalistas[1];
+const cores_main = {
+  "Tuto Quiroga (Alianza Libre)":"#ff3b3b",
+  "Rodrigo Paz Pereira (Partido Democrata Cristiano)":"#016167",
+  "Andrónico Rodríguez (Alianza Popular)":"#7bd4f0",
+  "Pavel Aracena (ADN)":"#000000",
+  "Manfred Reyes Villa (APB-Sumate)":"#56008c",
+  "Jhonny Fernández (La Fuerza del Pueblo)":"#00a8ec",
+  "Eduardo Del Castillo (Movimento al Socialismo)":"#0047ab",
+  "Samuel Doria Medina (Alianza Unidad)":"#ffb848"
+};
+const candidatosAll = Object.keys(cores_main);
+const levelConfigs = {
+  'Departamentos': { file: 'Bolivia 1V 2025 Departamento.geojson', nameKeyGuess: ['DEPTO'], searchLabel: 'DEPTO', zoom: 6 },
+  'Municipios': { file: 'Bolivia 1V 2025 Municipios.geojson', nameKeyGuess: ['MUNICIPIO'], searchLabel: 'MUNICIPIO', zoom: 12 }
+};
+
+const translations = {
+  pt: {
+    title: 'Simulador 2º Turno — Eleições Bolívia 2025',
+    toolbarTitle: 'Simulador 2º Turno — Bolívia 2025',
+    datasetOptions: {Departamentos: 'Departamentos', Municipios: 'Municípios'},
+    simModeLabel: 'Modo de Simulação',
+    simModeOptions: { global: 'Global (Todos os Departamentos)', per_dept: 'Detalhado (Departamento por Departamento)' },
+    selectDeptLabel: 'Selecione o Departamento para ajustar',
+    selectDept: '-- Selecione um Departamento --',
+    deptProgress: 'Progresso: {0} de {1} departamentos configurados',
+    openSim: 'Abrir painel de simulação',
+    openTutorial: 'Tutorial',
+    clearFilter: 'Limpar Filtro / Ver País Inteiro',
+    fitLabel: 'Ajustar extensão ao carregar',
+    simpLabel: 'Simplificação (nível): ',
+    simpOptions: {auto: 'Auto', low: 'Baixa (mais fiel)', medium: 'Média', high: 'Alta (mais veloz)'},
+    simTitleGlobal: 'Simulação Global (Valores aplicados a todo o país)',
+    simTitlePerDept: 'Simulação por Departamento',
+    finalistsText: 'Finalistas detectados: ',
+    vs: ' vs ',
+    transferTitle: 'Transferência de Votos dos Derrotados',
+    transferDesc: 'Ajuste como os votos dos candidatos eliminados serão redistribuídos.',
+    transferGroupTitle: 'Votos de {0}',
+    originalVotes: 'Votos originais',
+    abstentionDistribution: '1. % para abstenção, brancos e nulos',
+    abstentionDistributionTotal: 'Total:',
+    abstentionTo: 'Abstenção',
+    blankTo: 'Brancos',
+    nullTo: 'Nulos',
+    transferToFinalists: '2. % para os finalistas (do que sobrou)',
+    retentionTitle: 'Retenção dos Finalistas',
+    retentionLabel: 'Retenção',
+    retentionDesc: 'Porcentagem dos votos originais dos finalistas que permanecem com eles (o restante é considerado abstenção).',
+    recoveryTitle: 'Recuperação de votos perdidos (1º Turno)',
+    recoveryDesc: 'Recupere parte dos votos brancos, nulos e abstenções do primeiro turno e distribua-os entre os finalistas.',
+    recoveryGroupTitle: 'Votos {0} (1º Turno)',
+    recoveryRate: '% recuperados (participam no 2º turno)',
+    recoveryDistribution: 'Distribuição dos recuperados',
+    lblRetA: 'Tuto',
+    lblRetB: 'Rodrigo',
+    applySim: 'Aplicar simulação (atualiza mapa)',
+    resetSim: 'Resetar',
+    downloadImage: 'Baixar Imagem (Mapa)',
+    downloadXlsx: 'Baixar Planilha (XLSX)',
+    tutorialTitle: 'Como usar o Simulador — Passo a passo',
+    tutorialSteps: [
+        '<strong>1.</strong> Escolha o nível (Departamentos / Municípios). Comece por <em>Departamentos</em> para carregamento mais rápido.',
+        '<strong>2.</strong> Abra o painel de simulação.',
+        '<strong>3.</strong> Selecione o **Modo de Simulação**: <br/>- **Global:** Ajuste os sliders uma vez para aplicar os mesmos valores a todo o país. <br/>- **Detalhado:** Ajuste departamento por departamento. Use o menu suspenso para escolher qual departamento configurar. Suas configurações para cada um ficarão salvas.<br/><strong>Atenção:</strong> Trocar de modo irá resetar todas as configurações da simulação atual.',
+        '<strong>4.</strong> Ajuste a <em>Transferência de Votos</em> dos candidatos eliminados em <strong>duas etapas sequenciais</strong>: <br/><strong>(a) Primeiro, defina o destino inicial:</strong> Decida qual a porcentagem de votos do candidato eliminado se tornará <strong>abstenção</strong>, <strong>brancos</strong> ou <strong>nulos</strong>. <br/><strong>(b) Em segundo lugar, distribua o que sobrou:</strong> Apenas após definir as perdas na etapa (a), use o slider final para distribuir os votos <strong>restantes</strong> entre os finalistas <strong>{0}</strong> e <strong>{1}</strong>. Se 100% dos votos forem para abstenção/brancos/nulos, não haverá votos para distribuir.',
+        '<strong>5.</strong> Ajuste a <em>Retenção</em> dos finalistas: porcentagem dos votos originais que cada finalista mantém.',
+        '<strong>6.</strong> Ajuste a <em>Recuperação de votos perdidos</em> do 1º turno: defina a porcentagem de votos brancos, nulos e abstenções que são "recuperados" e distribua-os entre os finalistas.',
+        '<strong>7.</strong> Monitore a <strong>Pré-visualização</strong> no final do painel para ver o impacto em tempo real dos seus ajustes. O mapa também será atualizado ao vivo para refletir suas escolhas. No modo Detalhado, apenas o departamento selecionado será exibido na pré-visualização do mapa.',
+        '<strong>8.</strong> Clique em "Aplicar simulação". O mapa é atualizado e os botões de download são ativados.',
+        '<strong>9.</strong> Use os botões de download para salvar uma imagem do mapa ou uma planilha com os resultados detalhados.',
+        '<strong>10.</strong> Use o botão "Resetar" para limpar todas as simulções e voltar aos dados originais da primeira volta.'
+    ],
+    closeModal: 'Fechar',
+    deptSubtitle: '(Departamento)',
+    munSubtitle: '(Município, Departamento)',
+    votos: 'votos',
+    brancosResult: 'Brancos',
+    nulosResult: 'Nulos',
+    validos: 'Votos Válidos',
+    participacao: 'Participação',
+    nationalTitle: 'Total nacional (simulação)',
+    nationalTitleSimulated: 'Total nacional <span style="font-weight:normal;color:#16a34a;">(Resultados Simulados)</span>',
+    abstResult: 'Abstenção',
+    notAllDeptsConfigured: 'Atenção: A simulação será aplicada com a configuração global para os departamentos não configurados.',
+    allDeptsConfigured: 'Todos os departamentos estão configurados. Você pode aplicar a simulação.',
+    previewTitle: 'Pré-visualização ({0})',
+    nationalPreviewTitle: 'Pré-visualização Nacional (Consolidado)',
+    previewGlobal: 'Nacional',
+    previewSelectDept: 'Selecione um departamento para ver a prévia.',
+    noVotesToDistribute: 'Não há votos restantes para distribuir.',
+    filterView: 'Filtrar visualização',
+    loadingData: 'Carregando dados...',
+    noSimulationMessage: 'Simulação não realizada. Use o painel para configurar e aplicar.',
+    mustConfigureAllDepts: 'Você deve configurar todos os 9 departamentos antes de aplicar a simulação no modo detalhado.',
+    switchModeConfirm: 'Você tem certeza que quer trocar o modo de simulação? Todas as configurações atuais serão perdidas.'
+  },
+  es: {
+    title: 'Simulador 2ª Vuelta — Elecciones Bolivia 2025',
+    toolbarTitle: 'Simulador 2ª Vuelta — Bolivia 2025',
+    datasetOptions: {Departamentos: 'Departamentos', Municipios: 'Municipios'},
+    simModeLabel: 'Modo de Simulación',
+    simModeOptions: { global: 'Global (Todos los Departamentos)', per_dept: 'Detallado (Departamento por Departamento)' },
+    selectDeptLabel: 'Seleccione el Departamento para ajustar',
+    selectDept: '-- Seleccione un Departamento --',
+    deptProgress: 'Progreso: {0} de {1} departamentos configurados',
+    openSim: 'Abrir panel de simulación',
+    openTutorial: 'Tutorial',
+    clearFilter: 'Limpiar Filtro / Ver País Entero',
+    fitLabel: 'Ajustar extensión al cargar',
+    simpLabel: 'Simplificación (nível): ',
+    simpOptions: {auto: 'Auto', low: 'Baja (más fiel)', medium: 'Media', high: 'Alta (más veloz)'},
+    simTitleGlobal: 'Simulación Global (Valores aplicados a todo el país)',
+    simTitlePerDept: 'Simulación por Departamento',
+    finalistsText: 'Finalistas detectados: ',
+    vs: ' vs ',
+    transferTitle: 'Transferencia de Votos de los Derrotados',
+    transferDesc: 'Ajuste cómo se redistribuirán los votos de los candidatos eliminados.',
+    transferGroupTitle: 'Votos de {0}',
+    originalVotes: 'Votos originales',
+    abstentionDistribution: '1. % para abstención, blancos y nulos',
+    abstentionDistributionTotal: 'Total:',
+    abstentionTo: 'Abstención',
+    blankTo: 'Blancos',
+    nullTo: 'Nulos',
+    transferToFinalists: '2. % para los finalistas (de lo que sobró)',
+    retentionTitle: 'Retención de los Finalistas',
+    retentionLabel: 'Retención',
+    retentionDesc: 'Porcentaje de los votos originales de los finalistas que permanecen con ellos (el restante se considera abstención).',
+    recoveryTitle: 'Recuperación de votos perdidos (1ª Vuelta)',
+    recoveryDesc: 'Recupere parte de los votos blancos, nulos y abstenciones de la primera vuelta y distribúyalos entre los finalistas.',
+    recoveryGroupTitle: 'Votos {0} (1ª Vuelta)',
+    recoveryRate: '% recuperados (participan en la 2ª vuelta)',
+    recoveryDistribution: 'Distribución de los recuperados',
+    lblRetA: 'Tuto',
+    lblRetB: 'Rodrigo',
+    applySim: 'Aplicar simulación (actualiza mapa)',
+    resetSim: 'Resetear',
+    downloadImage: 'Descargar Imagen (Mapa)',
+    downloadXlsx: 'Descargar Planilla (XLSX)',
+    tutorialTitle: 'Cómo usar el Simulador — Paso a paso',
+    tutorialSteps: [
+        '<strong>1.</strong> Elige el nivel (Departamentos / Municipios). Comienza con <em>Departamentos</em> para carga más rápida.',
+        '<strong>2.</strong> Abre el panel de simulación.',
+        '<strong>3.</strong> Selecciona el **Modo de Simulación**: <br/>- **Global:** Ajusta los sliders una vez para aplicar los mismos valores a todo el país. <br/>- **Detallado:** Ajusta departamento por departamento. Usa el menú desplegable para elegir qué departamento configurar. Tus configuraciones para cada uno se guardarán.<br/><strong>Atención:</strong> Cambiar de modo reiniciará todas las configuraciones de la simulación actual.',
+        '<strong>4.</strong> Ajusta la <em>Transferencia de Votos</em> de los candidatos eliminados en <strong>dos pasos secuenciales</strong>: <br/><strong>(a) Primero, define el destino inicial:</strong> Decide qué porcentaje de votos del candidato eliminado se convertirá en <strong>abstención</strong>, <strong>blancos</strong> o <strong>nulos</strong>. <br/><strong>(b) Segundo, distribuye lo que sobró:</strong> Solo después de definir las pérdidas en el paso (a), usa el slider final para distribuir los votos <strong>restantes</strong> entre los finalistas <strong>{0}</strong> y <strong>{1}</strong>. Si el 100% de los votos van a abstención/blancos/nulos, no habrá votos para distribuir.',
+        '<strong>5.</strong> Ajusta la <em>Retención</em> de los finalistas: porcentaje de los votos originales que cada finalista mantiene.',
+        '<strong>6.</strong> Ajusta la <em>Recuperación de votos perdidos</em> de la 1ª vuelta: define el porcentaje de votos blancos, nulos y abstenciones que se "recuperan" y distribúyelos entre los finalistas.',
+        '<strong>7.</strong> Monitorea la <strong>Previsualización</strong> al final del panel para ver el impacto en tiempo real de tus ajustes. El mapa también se actualizará en vivo para reflejar tus elecciones. En el modo Detallado, solo el departamento seleccionado se mostrará en la previsualización del mapa.',
+        '<strong>8.</strong> Haz clic en "Aplicar simulación". El mapa se actualiza y los botones de descarga se activan.',
+        '<strong>9.</strong> Usa los botones de descarga para guardar una imagen del mapa o una planilla con los resultados detallados.',
+        '<strong>10.</strong> Usa el botón "Resetear" para limpiar todas las simulaciones y volver a los datos originales de la primera vuelta.'
+    ],
+    closeModal: 'Cerrar',
+    deptSubtitle: '(Departamento)',
+    munSubtitle: '(Municipio, Departamento)',
+    votos: 'votos',
+    brancosResult: 'Blancos',
+    nulosResult: 'Nulos',
+    validos: 'Votos Válidos',
+    participacao: 'Participación',
+    nationalTitle: 'Total nacional (simulación)',
+    nationalTitleSimulated: 'Total nacional <span style="font-weight:normal;color:#16a34a;">(Resultados Simulados)</span>',
+    abstResult: 'Abstención',
+    notAllDeptsConfigured: 'Atención: La simulación se aplicará con la configuración global para los departamentos no configurados.',
+    allDeptsConfigured: 'Todos los departamentos están configurados. Puedes aplicar la simulación.',
+    previewTitle: 'Previsualización ({0})',
+    nationalPreviewTitle: 'Previsualización Nacional (Consolidado)',
+    previewGlobal: 'Nacional',
+    previewSelectDept: 'Seleccione un departamento para ver la previsualización.',
+    noVotesToDistribute: 'No quedan votos para distribuir.',
+    filterView: 'Filtrar vista',
+    loadingData: 'Cargando datos...',
+    noSimulationMessage: 'Simulación no realizada. Utilice el panel para configurar y aplicar.',
+    mustConfigureAllDepts: 'Debe configurar los 9 departamentos antes de aplicar la simulación en modo detallado.',
+    switchModeConfirm: '¿Estás seguro de que quieres cambiar el modo de simulación? Se perderán todas las configuraciones actuales.'
+  },
+  en: {
+    title: '2nd Round Simulator — Bolivia Elections 2025',
+    toolbarTitle: '2nd Round Simulator — Bolivia 2025',
+    datasetOptions: {Departamentos: 'Departments', Municipios: 'Municipalities'},
+    simModeLabel: 'Simulation Mode',
+    simModeOptions: { global: 'Global (All Departments)', per_dept: 'Detailed (Department by Department)' },
+    selectDeptLabel: 'Select Department to adjust',
+    selectDept: '-- Select a Department --',
+    deptProgress: 'Progress: {0} of {1} departments configured',
+    openSim: 'Open simulation panel',
+    openTutorial: 'Tutorial',
+    clearFilter: 'Clear Filter / View Entire Country',
+    fitLabel: 'Fit bounds on load',
+    simpLabel: 'Simplification (level): ',
+    simpOptions: {auto: 'Auto', low: 'Low (more accurate)', medium: 'Medium', high: 'High (faster)'},
+    simTitleGlobal: 'Global Simulation (Values apply to the entire country)',
+    simTitlePerDept: 'Simulation by Department',
+    finalistsText: 'Detected finalists: ',
+    vs: ' vs ',
+    transferTitle: 'Vote Transfer from Eliminated Candidates',
+    transferDesc: 'Adjust how the votes of eliminated candidates will be redistributed.',
+    transferGroupTitle: 'Votes from {0}',
+    originalVotes: 'Original votes',
+    abstentionDistribution: '1. % for abstention, blanks, and nulls',
+    abstentionDistributionTotal: 'Total:',
+    abstentionTo: 'Abstention',
+    blankTo: 'Blanks',
+    nullTo: 'Nulls',
+    transferToFinalists: '2. % for finalists (from what\'s left)',
+    retentionTitle: 'Finalists Retention',
+    retentionLabel: 'Retention',
+    retentionDesc: 'Percentage of finalists\' original votes that remain with them (the rest is considered abstention).',
+    recoveryTitle: 'Recovery of lost votes (1st Round)',
+    recoveryDesc: 'Recover a portion of the blank, null, and abstention votes from the first round and distribute them between the finalists.',
+    recoveryGroupTitle: '{0} Votes (1st Round)',
+    recoveryRate: '% recovered (participate in 2nd round)',
+    recoveryDistribution: 'Distribution of recovered votes',
+    lblRetA: 'Tuto',
+    lblRetB: 'Rodrigo',
+    applySim: 'Apply simulation (updates map)',
+    resetSim: 'Reset',
+    downloadImage: 'Download Image (Map)',
+    downloadXlsx: 'Download Spreadsheet (XLSX)',
+    tutorialTitle: 'How to use the Simulator — Step by step',
+    tutorialSteps: [
+      '<strong>1.</strong> Choose the level (Departments / Municipalities). Start with <em>Departments</em> for faster loading.',
+      '<strong>2.</strong> Open the simulation panel.',
+      '<strong>3.</strong> Select the **Simulation Mode**: <br/>- **Global:** Adjust the sliders once to apply the same values to the entire country. <br/>- **Detailed:** Adjust department by department. Use the dropdown to choose which department to configure. Your settings for each will be saved.<br/><strong>Warning:</strong> Switching modes will reset all current simulation settings.',
+      '<strong>4.</strong> Adjust the <em>Vote Transfer</em> from eliminated candidates in <strong>two sequential steps</strong>: <br/><strong>(a) First, set the initial destination:</strong> Decide what percentage of the eliminated candidate\'s votes will become <strong>abstention</strong>, <strong>blanks</strong>, or <strong>nulls</strong>. <br/><strong>(b) Second, distribute what\'s left:</strong> Only after setting the losses in step (a), use the final slider to distribute the <strong>remaining</strong> votes between the finalists <strong>{0}</strong> and <strong>{1}</strong>. If 100% of the votes go to abstention/blanks/nulls, there will be no votes to distribute.',
+      '<strong>5.</strong> Adjust <em>Retention</em> for finalists: percentage of original votes each finalist keeps.',
+      '<strong>6.</strong> Adjust <em>Recovery of lost votes</em> from the 1st round: define the percentage of blank, null, and abstention votes that are "recovered" and distribute them between the finalists.',
+      '<strong>7.</strong> Monitor the <strong>Preview</strong> at the bottom of the panel to see the real-time impact of your adjustments. The map will also update live to reflect your choices. In Detailed mode, only the selected department will be shown in the map preview.',
+      '<strong>8.</strong> Click "Apply simulation". The map updates and the download buttons are enabled.',
+      '<strong>9.</strong> Use the download buttons to save an image of the map or a spreadsheet with the detailed results.',
+      '<strong>10.</strong> Use the "Reset" button to clear all simulations and return to the original first-round data.'
+    ],
+    closeModal: 'Close',
+    deptSubtitle: '(Department)',
+    munSubtitle: '(Municipality, Department)',
+    votos: 'votes',
+    brancosResult: 'Blanks',
+    nulosResult: 'Nulls',
+    validos: 'Valid Votes',
+    participacao: 'Participation',
+    nationalTitle: 'National Total (simulation)',
+    nationalTitleSimulated: 'National Total <span style="font-weight:normal;color:#16a34a;">(Simulated Results)</span>',
+    abstResult: 'Abstention',
+    notAllDeptsConfigured: 'Attention: The simulation will apply with the global configuration for departments not configured.',
+    allDeptsConfigured: 'All departments are configured. You can apply the simulation.',
+    previewTitle: 'Preview ({0})',
+    nationalPreviewTitle: 'National Preview (Consolidated)',
+    previewGlobal: 'National',
+    previewSelectDept: 'Select a department to see the preview.',
+    noVotesToDistribute: 'No remaining votes to distribute.',
+    filterView: 'Filter view',
+    loadingData: 'Loading data...',
+    noSimulationMessage: 'Simulation not performed. Use the panel to configure and apply.',
+    mustConfigureAllDepts: 'You must configure all 9 departments before applying the simulation in detailed mode.',
+    switchModeConfirm: 'Are you sure you want to switch simulation modes? All current settings will be lost.'
+  }
+};
+
+// ---------- MAP ----------
+const map = L.map('map', { center: [-16.29,-63.59], zoom:5, minZoom:4, preferCanvas:true });
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:20}).addTo(map);
+
+// ---------- UI refs ----------
+let datasetSelect = document.getElementById('datasetSelect');
+const simModeSelect = document.getElementById('simModeSelect');
+const departmentFilter = document.getElementById('departmentFilter');
+const perDeptFilterContainer = document.getElementById('perDeptFilterContainer');
+const openSim = document.getElementById('openSim');
+const simPanel = document.getElementById('simPanel');
+const simTitle = document.getElementById('simTitle');
+const deptProgress = document.getElementById('deptProgress');
+const simTransferContent = document.getElementById('simTransferContent');
+const simRecoveryContent = document.getElementById('simRecoveryContent');
+const applySim = document.getElementById('applySim');
+const resetSim = document.getElementById('resetSim');
+const resultPanel = document.getElementById('resultPanel');
+const miniLegend = document.getElementById('miniLegend');
+let fitOnLoad = document.getElementById('fitOnLoad');
+const nationalPanel = document.getElementById('nationalPanel');
+const modalBackdrop = document.getElementById('modalBackdrop');
+const openTutorial = document.getElementById('openTutorial');
+const closeModal = document.getElementById('closeModal');
+const loading = document.getElementById('loading');
+const langSelect = document.getElementById('langSelect');
+const retA = document.getElementById('retA');
+const retB = document.getElementById('retB');
+const valRetA = document.getElementById('valRetA');
+const valRetB = document.getElementById('valRetB');
+let simpLevel = document.getElementById('simpLevel');
+const clearFilterBtn = document.getElementById('clearFilterBtn');
+const previewTitle = document.getElementById('previewTitle');
+const previewContent = document.getElementById('previewContent');
+const downloadImageBtn = document.getElementById('downloadImageBtn');
+const downloadXlsxBtn = document.getElementById('downloadXlsxBtn');
+const nationalPreviewPanel = document.getElementById('nationalPreviewPanel');
+const nationalPreviewTitle = document.getElementById('nationalPreviewTitle');
+const nationalPreviewContent = document.getElementById('nationalPreviewContent');
+
+// state
+let currentLang = 'pt';
+let geoLayer = null;
+let rawGeoJsons = {};
+let allDepartments = [];
+let globalConfig = {};
+let perDeptConfig = {};
+let selectedSimode = 'global';
+let currentDeptSimTarget = null;
+let originalMapBounds = null;
+let isSimulationActive = false;
+let activeMapFilter = { level: null, name: null };
+let debounceTimeout = null;
+let isPreviewActive = false;
+let previewGj = null;
+
+const defaultTransferConfig = {
+    toAbst: 33.3,
+    toBlank: 33.3,
+    toNull: 33.4,
+    toA: 50
+};
+const defaultRecoveryConfig = {
+    rate: 0,
+    toA: 50
+};
+
+function initializeConfig() {
+    globalConfig = { eliminated: {}, recovery: {br: {}, nu: {}, ab: {}} };
+    perDeptConfig = {};
+    const eliminated = candidatosAll.filter(c => !finalistas.includes(c));
+    eliminated.forEach(c => globalConfig.eliminated[c] = { ...defaultTransferConfig });
+    globalConfig.recovery = {br: {...defaultRecoveryConfig}, nu: {...defaultRecoveryConfig}, ab: {...defaultRecoveryConfig}};
+    globalConfig.retA = 100; globalConfig.retB = 100;
+}
+
+// =======================================================
+// UI CONTROL & TRANSLATIONS
+// =======================================================
+function disableUI() {
+    datasetSelect.disabled = true;
+    openSim.disabled = true;
+    applySim.disabled = true;
+    resetSim.disabled = true;
+}
+
+function enableUI() {
+    datasetSelect.disabled = false;
+    openSim.disabled = false;
+    applySim.disabled = false;
+    resetSim.disabled = false;
+    updateApplyButtonState(); 
+}
+
+function rebindUIReferences() {
+    fitOnLoad = document.getElementById('fitOnLoad');
+    simpLevel = document.getElementById('simpLevel');
+    datasetSelect = document.getElementById('datasetSelect');
+    datasetSelect.addEventListener('change', () => loadDataset(datasetSelect.value));
+}
+
+function updateLang() {
+  const t = translations[currentLang];
+  const currentSimpLevel = simpLevel.value;
+  const currentFitOnLoad = fitOnLoad.checked;
+  const currentDataset = datasetSelect.value;
+  
+  document.title = t.title;
+  document.getElementById('toolbarTitle').textContent = t.toolbarTitle;
+  
+  document.getElementById('fitLabel').innerHTML = `<input type="checkbox" id="fitOnLoad" /> ${t.fitLabel}`;
+  document.getElementById('simpLabel').innerHTML = `${t.simpLabel}<select id="simpLevel">${Object.entries(t.simpOptions).map(([v, txt]) => `<option value="${v}">${txt}</option>`).join('')}</select>`;
+  document.getElementById('datasetSelect').innerHTML = Object.entries(t.datasetOptions).map(([v, txt]) => `<option value="${v}">${txt}</option>`).join('');
+
+  rebindUIReferences();
+  
+  fitOnLoad.checked = currentFitOnLoad;
+  simpLevel.value = currentSimpLevel;
+  datasetSelect.value = currentDataset;
+  
+  document.getElementById('simModeLabel').textContent = t.simModeLabel;
+  document.getElementById('simModeSelect').innerHTML = Object.entries(t.simModeOptions).map(([v, txt]) => `<option value="${v}">${txt}</option>`).join('');
+  document.getElementById('selectDeptLabel').textContent = t.selectDeptLabel;
+  document.getElementById('finalistsText').innerHTML = `${t.finalistsText}<strong id="finalistaA">${Aname.split(' (')[0]}</strong> ${t.vs} <strong id="finalistaB">${Bname.split(' (')[0]}</strong>`;
+  
+  document.getElementById('transferTitle').textContent = t.transferTitle;
+  document.getElementById('transferDesc').textContent = t.transferDesc;
+  document.getElementById('retentionTitle').textContent = t.retentionTitle;
+  document.getElementById('retentionDesc').textContent = t.retentionDesc;
+  document.getElementById('lblRetAGlobal').innerHTML = `${t.retentionLabel} — <span id="lblRetA">${t.lblRetA}</span>`;
+  document.getElementById('lblRetBGlobal').innerHTML = `${t.retentionLabel} — <span id="lblRetB">${t.lblRetB}</span>`;
+  document.getElementById('recoveryTitle').textContent = t.recoveryTitle;
+  document.getElementById('recuperacaoDesc').textContent = t.recoveryDesc;
+  
+  openSim.textContent = t.openSim;
+  applySim.textContent = t.applySim;
+  resetSim.textContent = t.resetSim;
+  clearFilterBtn.textContent = t.clearFilter;
+  openTutorial.textContent = t.openTutorial;
+  closeModal.textContent = t.closeModal;
+  downloadImageBtn.textContent = t.downloadImage;
+  downloadXlsxBtn.textContent = t.downloadXlsx;
+  nationalPreviewTitle.textContent = t.nationalPreviewTitle;
+  document.getElementById('tutorialTitle').textContent = t.tutorialTitle;
+  document.getElementById('tutorialSteps').innerHTML = t.tutorialSteps.map(s => `<div class="step">${s.replace('{0}', Aname.split(' (')[0]).replace('{1}', Bname.split(' (')[0])}</div>`).join('');
+  
+  const selectedDept = departmentFilter.value;
+  departmentFilter.innerHTML = `<option value="__NONE__" disabled selected>${t.selectDept}</option>` + allDepartments.map(d => `<option value="${d}">${d}</option>`).join('');
+  if (allDepartments.includes(selectedDept)) {
+    departmentFilter.value = selectedDept;
+  }
+
+  updateSimTitle();
+  updateDeptProgress();
+  updateLegend();
+  if (simPanel.style.display !== 'none') {
+    renderSimUI();
+  }
+}
+
+// =======================================================
+// HELPERS
+// =======================================================
+function pickNameProperty(props, guesses){ const keys = Object.keys(props).map(k=>k.toLowerCase()); const found = guesses.map(g=>g.toLowerCase()).find(g=>keys.includes(g)); if(found) return Object.keys(props).find(k=>k.toLowerCase()===found); for(const k of Object.keys(props)) if(typeof props[k]==='string' && props[k].length>0) return k; return null; }
+function hexToRgb(hex){ hex = (hex||'').replace('#',''); if(hex.length===3) hex = hex.split('').map(h=>h+h).join(''); const r = parseInt(hex.substring(0,2),16)||0; const g = parseInt(hex.substring(2,4),16)||0; const b = parseInt(hex.substring(4,6),16)||0; return {r,g,b}; }
+function rgbToHex(r,g,b){ const ch=(c)=>{let h=Math.round(c).toString(16); return h.length==1?"0"+h:h}; return "#"+ch(r)+ch(g)+ch(b); }
+function adjust_color(color, percent, level){ let rgb = hexToRgb(color); let factor = (level==='Municipios')? Math.sqrt(percent/100) : (percent/100); let newR = rgb.r*factor + 255*(1-factor); let newG = rgb.g*factor + 255*(1-factor); let newB = rgb.b*factor + 255*(1-factor); return rgbToHex(newR,newG,newB); }
+function showLoading(){ loading.style.display='flex'; }
+function hideLoading(){ loading.style.display='none'; }
+function getLocale() { return currentLang === 'pt' ? 'pt-BR' : currentLang === 'es' ? 'es-ES' : 'en-US'; }
+function formatPercent(p) { return p.toLocaleString(getLocale(), {style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+function formatNumber(n) { return Math.round(n).toLocaleString(getLocale()); }
+function getTolerance(level){ const s = simpLevel.value || 'auto'; if(s==='low') return 0.0004; if(s==='medium') return 0.0012; if(s==='high') return 0.003; if(level==='Municipios') return 0.0015; return 0.0006; }
+
+// =======================================================
+// DATA PROCESSING & SIMULATION LOGIC
+// =======================================================
+function processFeaturesBatched(gj, options){ return new Promise((resolve)=>{
+  const batch = options.batch || 200;
+  let i = 0; const N = gj.features.length;
+  function step(){ const end = Math.min(i+batch, N); for(let j=i;j<end;j++){ const f = gj.features[j]; const props = f.properties || {};
+      props.__orig = Object.assign({}, props);
+      candidatosAll.forEach(c=>{ props[c] = parseFloat(props[c]) || 0; });
+      props.VALIDOS = parseFloat(props.VALIDOS) || 0;
+      props.BLANCOS = parseFloat(props.BLANCOS) || 0;
+      props.NULOS = parseFloat(props.NULOS) || 0;
+      props.EMITIDOS = parseFloat(props.EMITIDOS) || 0;
+      props.INSCRITOS = parseFloat(props.INSCRITOS) || 0;
+      candidatosAll.forEach(c=>{ const col = 'Percent_' + c.replace(/\s/g, '_').replace(/[()]/g, ''); props[col] = props.VALIDOS>0? (props[c]/props.VALIDOS) : 0; });
+      props.Percent_BLANCOS = props.EMITIDOS>0? (props.BLANCOS/props.EMITIDOS) : 0;
+      props.Percent_NULOS = props.EMITIDOS>0? (props.NULOS/props.EMITIDOS) : 0;
+      props.Percent_Participacao = props.INSCRITOS>0? (props.EMITIDOS/props.INSCRITOS) : 0;
+      const percents = candidatosAll.map(c => props['Percent_' + c.replace(/\s/g, '_').replace(/[()]/g, '')] || 0);
+      const maxp = Math.max(...percents);
+      const winners = candidatosAll.filter((c, idx) => percents[idx] === maxp);
+      props.vencedor = maxp>0? winners[0] : 'Tossup'; props.percent_vencedor = maxp * 100;
+  }
+  i = end;
+  if(i < N) setTimeout(step, 0); else resolve(); }
+  step(); }); }
+
+function updateSimTitle() {
+    const t = translations[currentLang];
+    simTitle.textContent = selectedSimode === 'global' ? t.simTitleGlobal : t.simTitlePerDept;
+}
+
+function updateDeptProgress() {
+    if (selectedSimode === 'per_dept' && allDepartments.length > 0) {
+        const configuredCount = Object.keys(perDeptConfig).length;
+        const totalCount = allDepartments.length;
+        const t = translations[currentLang];
+        deptProgress.textContent = t.deptProgress.replace('{0}', configuredCount).replace('{1}', totalCount);
+        deptProgress.style.color = (configuredCount === totalCount) ? '#16a34a' : 'var(--muted)';
+    } else {
+        deptProgress.textContent = '';
+    }
+}
+
+function updateApplyButtonState() {
+    if (selectedSimode === 'per_dept') {
+        const allConfigured = Object.keys(perDeptConfig).length === allDepartments.length;
+        applySim.disabled = !allConfigured;
+        applySim.title = allConfigured ? '' : translations[currentLang].mustConfigureAllDepts;
+    } else {
+        applySim.disabled = false;
+        applySim.title = '';
+    }
+}
+
+function saveCurrentValues() {
+    const config = {
+        eliminated: {},
+        retA: parseFloat(retA.value), retB: parseFloat(retB.value),
+        recovery: {br: {}, nu: {}, ab: {}}
+    };
+
+    simTransferContent.querySelectorAll('.transfer-group').forEach(group => {
+        const cand = group.dataset.cand;
+        config.eliminated[cand] = {
+            toAbst: parseFloat(group.querySelector('.abst-slider').value),
+            toBlank: parseFloat(group.querySelector('.blank-slider').value),
+            toNull: parseFloat(group.querySelector('.null-slider').value),
+            toA: parseFloat(group.querySelector('.to-finalist-slider').value),
+        };
+    });
+
+    simRecoveryContent.querySelectorAll('.recovery-group').forEach(group => {
+        const type = group.dataset.type;
+        config.recovery[type] = {
+            rate: parseFloat(group.querySelector('.recovery-rate-slider').value),
+            toA: parseFloat(group.querySelector('.recovery-finalist-slider').value),
+        };
+    });
+
+    if (selectedSimode === 'global') {
+        globalConfig = config;
+    } else if (currentDeptSimTarget) {
+        perDeptConfig[currentDeptSimTarget] = config;
+    }
+    
+    updateDeptProgress();
+    updateApplyButtonState();
+}
+
+function getOriginalVotesForSelectedArea(deptToFilter = null) {
+    const level = rawGeoJsons['Municipios'] ? 'Municipios' : 'Departamentos';
+    if (!rawGeoJsons[level]) return null;
+    
+    let featuresToProcess = rawGeoJsons[level].features;
+
+    if (deptToFilter) {
+      featuresToProcess = featuresToProcess.filter(f => (f.properties.DEPTO || f.properties.Departamento || f.properties.depto) === deptToFilter);
+    }
+    
+    const aggVotes = { BLANCOS: 0, NULOS: 0, EMITIDOS: 0, INSCRITOS: 0 };
+    candidatosAll.forEach(cand => aggVotes[cand] = 0);
+    
+    for(const f of featuresToProcess) {
+        const props = f.properties.__orig;
+        for(const cand of candidatosAll) {
+            aggVotes[cand] += (props[cand] || 0);
+        }
+        aggVotes.BLANCOS += (props.BLANCOS || 0);
+        aggVotes.NULOS += (props.NULOS || 0);
+        aggVotes.EMITIDOS += (props.EMITIDOS || 0);
+        aggVotes.INSCRITOS += (props.INSCRITOS || 0);
+    }
+    
+    aggVotes.ABSTENCAO = aggVotes.INSCRITOS - aggVotes.EMITIDOS;
+    return aggVotes;
+}
+
+function calculatePreview() {
+    const deptToFilter = (selectedSimode === 'per_dept' && currentDeptSimTarget) ? currentDeptSimTarget : null;
+    const origVotes = getOriginalVotesForSelectedArea(deptToFilter);
+    if (!origVotes) return null;
+
+    let currentConfig = {
+        eliminated: {},
+        retA: parseFloat(retA.value), retB: parseFloat(retB.value),
+        recovery: { br: {}, nu: {}, ab: {} }
+    };
+    simTransferContent.querySelectorAll('.transfer-group').forEach(group => {
+        const cand = group.dataset.cand;
+        currentConfig.eliminated[cand] = {
+            toAbst: parseFloat(group.querySelector('.abst-slider').value),
+            toBlank: parseFloat(group.querySelector('.blank-slider').value),
+            toNull: parseFloat(group.querySelector('.null-slider').value),
+            toA: parseFloat(group.querySelector('.to-finalist-slider').value)
+        };
+    });
+    simRecoveryContent.querySelectorAll('.recovery-group').forEach(group => {
+        const type = group.dataset.type;
+        currentConfig.recovery[type] = {
+            rate: parseFloat(group.querySelector('.recovery-rate-slider').value),
+            toA: parseFloat(group.querySelector('.recovery-finalist-slider').value)
+        };
+    });
+
+    const simVotes = {
+        [Aname]: origVotes[Aname] * (currentConfig.retA / 100),
+        [Bname]: origVotes[Bname] * (currentConfig.retB / 100)
+    };
+
+    Object.keys(currentConfig.eliminated).forEach(cand => {
+        const votes = origVotes[cand] || 0;
+        const conf = currentConfig.eliminated[cand];
+        const totalLossPct = Math.min(100, conf.toAbst + conf.toBlank + conf.toNull);
+        const remaining = votes * (1 - (totalLossPct / 100));
+        if (remaining > 0) {
+            simVotes[Aname] += remaining * (conf.toA / 100);
+            simVotes[Bname] += remaining * (1 - conf.toA / 100);
+        }
+    });
+    
+    const recovBr = origVotes.BLANCOS * (currentConfig.recovery.br.rate / 100);
+    simVotes[Aname] += recovBr * (currentConfig.recovery.br.toA / 100);
+    simVotes[Bname] += recovBr * (1 - currentConfig.recovery.br.toA / 100);
+
+    const recovNu = origVotes.NULOS * (currentConfig.recovery.nu.rate / 100);
+    simVotes[Aname] += recovNu * (currentConfig.recovery.nu.toA / 100);
+    simVotes[Bname] += recovNu * (1 - currentConfig.recovery.nu.toA / 100);
+    
+    const recovAb = origVotes.ABSTENCAO * (currentConfig.recovery.ab.rate / 100);
+    simVotes[Aname] += recovAb * (currentConfig.recovery.ab.toA / 100);
+    simVotes[Bname] += recovAb * (1 - currentConfig.recovery.ab.toA / 100);
+
+    return simVotes;
+}
+
+function updatePreviewPanel() {
+    const t = translations[currentLang];
+    const context = selectedSimode === 'global' ? t.previewGlobal : (currentDeptSimTarget || '...');
+    previewTitle.innerHTML = t.previewTitle.replace('{0}', context);
+
+    if (selectedSimode === 'per_dept' && !currentDeptSimTarget) {
+        previewContent.innerHTML = `<div class="small">${t.previewSelectDept}</div>`;
+        return;
+    }
+
+    const result = calculatePreview();
+    if (!result) {
+        previewContent.innerHTML = `<div class="small">${t.loadingData}</div>`;
+        return;
+    }
+
+    const totalValidos = result[Aname] + result[Bname];
+    const pctA = totalValidos > 0 ? (result[Aname] / totalValidos) : 0;
+    const pctB = totalValidos > 0 ? (result[Bname] / totalValidos) : 0;
+    
+    const badgeA = pctA > pctB ? '<span id="preview-winner-badge">✓</span>' : '';
+    const badgeB = pctB > pctA ? '<span id="preview-winner-badge">✓</span>' : '';
+
+    previewContent.innerHTML = `
+      <div class="result-row">
+        <span class="cand-name" style="color:${cores_main[Aname]}">${Aname.split(' (')[0]} ${badgeA}</span>
+        <div>
+          <span class="cand-pct">${formatPercent(pctA)}</span>
+          <span class="cand-votes small">(${formatNumber(result[Aname])})</span>
+        </div>
+      </div>
+      <div class="result-row">
+        <span class="cand-name" style="color:${cores_main[Bname]}">${Bname.split(' (')[0]} ${badgeB}</span>
+        <div>
+          <span class="cand-pct">${formatPercent(pctB)}</span>
+          <span class="cand-votes small">(${formatNumber(result[Bname])})</span>
+        </div>
+      </div>
+    `;
+}
+
+function renderSimUI() { 
+    const t = translations[currentLang];
+    let config = {};
+
+    if (selectedSimode === 'global') {
+        currentDeptSimTarget = null;
+        config = globalConfig;
+    } else if (currentDeptSimTarget) {
+        // Use department-specific config, or clone global as a starting point.
+        config = perDeptConfig[currentDeptSimTarget] || JSON.parse(JSON.stringify(globalConfig));
+    } else {
+        // In "per_dept" mode but no department is selected
+        simTransferContent.innerHTML = '';
+        simRecoveryContent.innerHTML = '';
+        retA.value = 100; valRetA.textContent = '100%';
+        retB.value = 100; valRetB.textContent = '100%';
+        updatePreviewPanel();
+        return;
+    }
+  
+    const origVotes = getOriginalVotesForSelectedArea(selectedSimode === 'per_dept' ? currentDeptSimTarget : null);
+    
+    const eliminated = candidatosAll.filter(c => !finalistas.includes(c));
+    simTransferContent.innerHTML = '';
+  
+    eliminated.forEach(cand => {
+        const candConfig = (config.eliminated && config.eliminated[cand]) || defaultTransferConfig;
+        const totalVotes = origVotes ? (origVotes[cand] || 0) : 0;
+
+        const group = document.createElement('div');
+        group.className = 'transfer-group';
+        group.dataset.cand = cand;
+        group.innerHTML = `
+            <h6>${t.transferGroupTitle.replace('{0}', cand.split(' (')[0])}</h6>
+            <div class="small">${t.originalVotes}: ${formatNumber(totalVotes)}</div>
+            <div class="small">${t.abstentionDistribution}</div>
+            <div class="slider-container">
+                <span class="transfer-slider-label">${t.abstentionTo}</span>
+                <input type="range" min="0" max="100" step="0.1" value="${candConfig.toAbst}" class="slider abst-slider" />
+                <div class="slider-val abst-val"></div>
+            </div>
+            <div class="slider-container">
+                <span class="transfer-slider-label">${t.blankTo}</span>
+                <input type="range" min="0" max="100" step="0.1" value="${candConfig.toBlank}" class="slider blank-slider" />
+                <div class="slider-val blank-val"></div>
+            </div>
+            <div class="slider-container">
+                <span class="transfer-slider-label">${t.nullTo}</span>
+                <input type="range" min="0" max="100" step="0.1" value="${candConfig.toNull}" class="slider null-slider" />
+                <div class="slider-val null-val"></div>
+            </div>
+            <div class="abst-total"></div>
+            <div class="small" style="margin-top:12px;">${t.transferToFinalists}</div>
+            <div class="slider-container">
+                <span class="small" style="color:${cores_main[Aname]}">${Aname.split(' (')[0]}</span>
+                <input type="range" min="0" max="100" step="0.1" value="${candConfig.toA}" class="slider to-finalist-slider" />
+                <span class="small" style="color:${cores_main[Bname]}">${Bname.split(' (')[0]}</span>
+            </div>
+            <div class="slider-val finalist-val" style="margin-top:4px;text-align:center;"></div>
+        `;
+        simTransferContent.appendChild(group);
+        
+        const updateTransfersDisplay = () => {
+          const abstPct = parseFloat(group.querySelector('.abst-slider').value);
+          const blankPct = parseFloat(group.querySelector('.blank-slider').value);
+          const nullPct = parseFloat(group.querySelector('.null-slider').value);
+          const finalistPctA = parseFloat(group.querySelector('.to-finalist-slider').value);
+          
+          group.querySelector('.abst-val').innerHTML = `${abstPct.toFixed(1)}% <span class="small">(${formatNumber(totalVotes * abstPct / 100)})</span>`;
+          group.querySelector('.blank-val').innerHTML = `${blankPct.toFixed(1)}% <span class="small">(${formatNumber(totalVotes * blankPct / 100)})</span>`;
+          group.querySelector('.null-val').innerHTML = `${nullPct.toFixed(1)}% <span class="small">(${formatNumber(totalVotes * nullPct / 100)})</span>`;
+          
+          const totalLoss = abstPct + blankPct + nullPct;
+          const totalLossDisplay = group.querySelector('.abst-total');
+          totalLossDisplay.textContent = `${t.abstentionDistributionTotal} ${totalLoss.toFixed(1)}%`;
+          totalLossDisplay.classList.toggle('over', totalLoss > 100);
+
+          const cappedTotalLoss = Math.min(100, totalLoss);
+          const remainingVotes = totalVotes * (1 - cappedTotalLoss / 100);
+          
+          if (remainingVotes < 1) {
+              group.querySelector('.to-finalist-slider').classList.add('disabled-slider');
+              group.querySelector('.finalist-val').textContent = t.noVotesToDistribute;
+          } else {
+              group.querySelector('.to-finalist-slider').classList.remove('disabled-slider');
+              const votesToA = formatNumber(remainingVotes * (finalistPctA / 100));
+              const votesToB = formatNumber(remainingVotes * (1 - finalistPctA / 100));
+              group.querySelector('.finalist-val').innerHTML = `${finalistPctA.toFixed(1)}% ${t.lblRetA} <span class="small">(${votesToA})</span> / ${ (100 - finalistPctA).toFixed(1)}% ${t.lblRetB} <span class="small">(${votesToB})</span>`;
+          }
+        };
+        
+        group.querySelectorAll('.slider').forEach(slider => {
+          slider.addEventListener('input', () => { 
+            updateTransfersDisplay(); 
+            saveCurrentValues();
+            updatePreviewPanel();
+            if (selectedSimode === 'per_dept') updateNationalPreview();
+            triggerMapPreview();
+          });
+        });
+        updateTransfersDisplay();
+    });
+
+    retA.value = config.retA !== undefined ? config.retA : 100;
+    valRetA.textContent = `${Math.round(retA.value)}%`;
+    retB.value = config.retB !== undefined ? config.retB : 100;
+    valRetB.textContent = `${Math.round(retB.value)}%`;
+    
+    const recoveryTypes = { br: t.brancosResult, nu: t.nulosResult, ab: t.abstResult };
+    simRecoveryContent.innerHTML = '';
+    
+    Object.entries(recoveryTypes).forEach(([type, label]) => {
+        const typeConfig = (config.recovery && config.recovery[type]) || defaultRecoveryConfig;
+        let totalSourceVotes = 0;
+        if (origVotes) {
+          if (type === 'br') totalSourceVotes = origVotes.BLANCOS;
+          else if (type === 'nu') totalSourceVotes = origVotes.NULOS;
+          else if (type === 'ab') totalSourceVotes = origVotes.ABSTENCAO;
+        }
+
+        const group = document.createElement('div');
+        group.className = 'recovery-group';
+        group.dataset.type = type;
+        group.innerHTML = `
+            <h6>${t.recoveryGroupTitle.replace('{0}', label)} <span class="small">(${formatNumber(totalSourceVotes)})</span></h6>
+            <div class="slider-container">
+                <span class="small" style="flex-basis: 120px;">${t.recoveryRate}</span>
+                <input type="range" min="0" max="100" step="0.1" value="${typeConfig.rate}" class="slider recovery-rate-slider" />
+                <div class="slider-val recovery-rate-val"></div>
+            </div>
+            <div class="small" style="margin-top:8px;">${t.recoveryDistribution}</div>
+            <div class="slider-container">
+                <span class="small" style="color:${cores_main[Aname]}">${t.lblRetA}</span>
+                <input type="range" min="0" max="100" step="0.1" value="${typeConfig.toA}" class="slider recovery-finalist-slider" />
+                <span class="small" style="color:${cores_main[Bname]}">${t.lblRetB}</span>
+            </div>
+            <div class="slider-val recovery-finalist-val" style="margin-top:4px;text-align:center;"></div>
+        `;
+        simRecoveryContent.appendChild(group);
+
+        const updateRecoveryDisplay = () => {
+          const ratePct = parseFloat(group.querySelector('.recovery-rate-slider').value);
+          const toAPct = parseFloat(group.querySelector('.recovery-finalist-slider').value);
+          const recoveredVotes = totalSourceVotes * (ratePct / 100);
+
+          group.querySelector('.recovery-rate-val').innerHTML = `${ratePct.toFixed(1)}% <span class="small">(${formatNumber(recoveredVotes)})</span>`;
+
+          const finalistSlider = group.querySelector('.recovery-finalist-slider');
+          const finalistVal = group.querySelector('.recovery-finalist-val');
+
+          if (recoveredVotes < 1) {
+            finalistSlider.classList.add('disabled-slider');
+            finalistVal.textContent = t.noVotesToDistribute;
+          } else {
+            finalistSlider.classList.remove('disabled-slider');
+            const votesToA = formatNumber(recoveredVotes * (toAPct / 100));
+            const votesToB = formatNumber(recoveredVotes * (1 - toAPct / 100));
+            finalistVal.innerHTML = `${toAPct.toFixed(1)}% ${t.lblRetA} <span class="small">(${votesToA})</span> / ${(100 - toAPct).toFixed(1)}% ${t.lblRetB} <span class="small">(${votesToB})</span>`;
+          }
+        };
+
+        group.querySelectorAll('input[type=range]').forEach(slider => {
+            slider.addEventListener('input', () => {
+                updateRecoveryDisplay();
+                saveCurrentValues();
+                updatePreviewPanel(); 
+                if (selectedSimode === 'per_dept') updateNationalPreview();
+                triggerMapPreview();
+            });
+        });
+        updateRecoveryDisplay();
+    });
+    
+    updatePreviewPanel();
+    if (selectedSimode === 'per_dept') updateNationalPreview();
+    updateApplyButtonState();
+}
+
+async function applyToGJ(gj, params) {
+  return new Promise((resolve) => {
+    const { globalConfig, perDeptConfig } = params;
+    const batch = 200; let i = 0; const N = gj.features.length;
+    function step() {
+      const end = Math.min(i + batch, N);
+      for (let j = i; j < end; j++) {
+        const f = gj.features[j]; const props = f.properties; const o = props.__orig || {};
+        
+        const deptKey = o.DEPTO || o.Departamento || o.depto;
+        const config = (params.mode === 'per_dept' && perDeptConfig[deptKey]) ? perDeptConfig[deptKey] : globalConfig;
+        
+        let newVotes = { [Aname]: o[Aname] || 0, [Bname]: o[Bname] || 0, BLANCOS: o.BLANCOS || 0, NULOS: o.NULOS || 0 };
+
+        candidatosAll.filter(c => !finalistas.includes(c)).forEach(elim => {
+            const votes = o[elim] || 0;
+            const conf = config.eliminated[elim] || defaultTransferConfig;
+            
+            const totalLossPct = Math.min(100, (conf.toAbst || 0) + (conf.toBlank || 0) + (conf.toNull || 0));
+            const remaining = votes * (1 - (totalLossPct / 100));
+
+            if (remaining > 0) {
+                newVotes[Aname] += remaining * (conf.toA / 100);
+                newVotes[Bname] += remaining * (1 - conf.toA / 100);
+            }
+            newVotes.BLANCOS += votes * ((conf.toBlank || 0) / 100);
+            newVotes.NULOS += votes * ((conf.toNull || 0) / 100);
+            props[elim] = 0;
+        });
+        
+        newVotes[Aname] *= ((config.retA ?? 100) / 100);
+        newVotes[Bname] *= ((config.retB ?? 100) / 100);
+        
+        const recovBr = (o.BLANCOS || 0) * ((config.recovery.br?.rate ?? 0) / 100);
+        newVotes[Aname] += recovBr * ((config.recovery.br?.toA ?? 50) / 100);
+        newVotes[Bname] += recovBr * (1 - (config.recovery.br?.toA ?? 50) / 100);
+        newVotes.BLANCOS -= recovBr;
+
+        const recovNu = (o.NULOS || 0) * ((config.recovery.nu?.rate ?? 0) / 100);
+        newVotes[Aname] += recovNu * ((config.recovery.nu?.toA ?? 50) / 100);
+        newVotes[Bname] += recovNu * (1 - (config.recovery.nu?.toA ?? 50) / 100);
+        newVotes.NULOS -= recovNu;
+        
+        const currentAbst = (o.INSCRITOS || 0) - (o.EMITIDOS || 0);
+        const recovAb = currentAbst * ((config.recovery.ab?.rate ?? 0) / 100);
+        newVotes[Aname] += recovAb * ((config.recovery.ab?.toA ?? 50) / 100);
+        newVotes[Bname] += recovAb * (1 - (config.recovery.ab?.toA ?? 50) / 100);
+        
+        props[Aname] = newVotes[Aname];
+        props[Bname] = newVotes[Bname];
+        props.BLANCOS = newVotes.BLANCOS;
+        props.NULOS = newVotes.NULOS;
+        props.VALIDOS = props[Aname] + props[Bname];
+        props.EMITIDOS = props.VALIDOS + props.BLANCOS + props.NULOS;
+        
+        candidatosAll.forEach(cand => {
+            const col = 'Percent_' + cand.replace(/\s/g, '_').replace(/[()]/g, '');
+            props[col] = props.VALIDOS > 0 ? ((props[cand] || 0) / props.VALIDOS) : 0;
+        });
+        props.Percent_BLANCOS = props.EMITIDOS > 0 ? (props.BLANCOS / props.EMITIDOS) : 0;
+        props.Percent_NULOS = props.EMITIDOS > 0 ? (props.NULOS / props.EMITIDOS) : 0;
+        props.Percent_Participacao = o.INSCRITOS > 0 ? (props.EMITIDOS / o.INSCRITOS) : 0;
+        
+        const aPct = props['Percent_' + Aname.replace(/\s/g, '_').replace(/[()]/g, '')];
+        const bPct = props['Percent_' + Bname.replace(/\s/g, '_').replace(/[()]/g, '')];
+        props.vencedor = (aPct === bPct) ? 'Tossup' : (aPct > bPct ? Aname : Bname);
+        props.percent_vencedor = Math.max(aPct, bPct) * 100;
+      }
+      i = end;
+      if (i < N) setTimeout(step, 0); else resolve();
+    }
+    step();
+  });
+}
+
+// =======================================================
+// MAIN ACTIONS
+// =======================================================
+
+async function applySimulation() {
+  if (selectedSimode === 'per_dept' && Object.keys(perDeptConfig).length !== allDepartments.length) {
+      alert(translations[currentLang].mustConfigureAllDepts);
+      return;
+  }
+
+  disableUI(); showLoading();
+  try {
+    await new Promise(resolve => setTimeout(resolve, 10));
+    saveCurrentValues();
+    isSimulationActive = true;
+    isPreviewActive = false;
+    previewGj = null; // Libera memória do preview
+    
+    const params = { globalConfig, perDeptConfig, mode: selectedSimode };
+    for (const level in rawGeoJsons) {
+      if (rawGeoJsons[level]) {
+        await applyToGJ(rawGeoJsons[level], params);
+      }
+    }
+    
+    const aggLevel = rawGeoJsons['Municipios'] ? 'Municipios' : 'Departamentos';
+    const aggFeatures = rawGeoJsons[aggLevel].features;
+    let aggs = { A: 0, B: 0, Br: 0, Nu: 0, Emit: 0, Insc: 0 };
+    aggFeatures.forEach(f => {
+      const props = f.properties;
+      const o = props.__orig;
+      aggs.A += props[Aname] || 0; 
+      aggs.B += props[Bname] || 0;
+      aggs.Br += props.BLANCOS || 0; 
+      aggs.Nu += props.NULOS || 0;
+      aggs.Emit += props.EMITIDOS || 0; 
+      aggs.Insc += o.INSCRITOS || 0;
+    });
+    
+    const totalValidos = aggs.A + aggs.B;
+    const totalAb = aggs.Insc - aggs.Emit;
+    const aPct = totalValidos > 0 ? (aggs.A / totalValidos) : 0;
+    const bPct = totalValidos > 0 ? (aggs.B / totalValidos) : 0;
+    const partPct = aggs.Insc > 0 ? (aggs.Emit / aggs.Insc) : 0;
+
+    renderNationalPanel({aggA: aggs.A, aggB: aggs.B, aPct, bPct, totalValidos, aggsBr: aggs.Br, aggsNu: aggs.Nu, totalEmitidos: aggs.Emit, totalInscritos: aggs.Insc, totalAb, partPct});
+    updateMapLayer();
+    
+    downloadImageBtn.disabled = false;
+    downloadXlsxBtn.disabled = false;
+    
+  } catch (error) { console.error("Erro ao aplicar simulação:", error); alert("Ocorreu um erro ao aplicar a simulação."); } 
+  finally { hideLoading(); enableUI(); }
+}
+
+function resetSimulation() {
+  disableUI(); showLoading();
+  setTimeout(() => {
+    try {
+      isSimulationActive = false;
+      isPreviewActive = false;
+      previewGj = null; // Libera memória
+      downloadImageBtn.disabled = true;
+      downloadXlsxBtn.disabled = true;
+      
+      // Reseta os dados para o original
+      Object.values(rawGeoJsons).forEach(gj => {
+        if(gj) {
+            gj.features.forEach(f => { 
+                if (f.properties.__orig) {
+                    // Restaura a partir do backup __orig
+                    Object.assign(f.properties, JSON.parse(JSON.stringify(f.properties.__orig)));
+                }
+            });
+        }
+      });
+      
+      // Reseta as configurações
+      initializeConfig();
+      
+      // Reseta a UI do painel de simulação
+      simModeSelect.value = 'global';
+      selectedSimode = 'global';
+      perDeptFilterContainer.style.display = 'none';
+      nationalPreviewPanel.style.display = 'none';
+      departmentFilter.value = '__NONE__';
+      currentDeptSimTarget = null;
+      updateDeptProgress();
+      renderSimUI(); // Renderiza com valores padrão
+      
+      clearMapFilter(true); // Limpa filtros e atualiza o mapa para o estado cinza
+      
+      nationalPanel.innerHTML = '';
+      resultPanel.style.display = 'none';
+
+    } catch (error) { console.error("Erro ao resetar:", error); } 
+    finally { hideLoading(); enableUI(); }
+  }, 10);
+}
+
+async function loadDataset(level) {
+  disableUI();
+  showLoading();
+
+  try {
+    const cfg = levelConfigs[level];
+    if (!rawGeoJsons[level]) {
+        const res = await fetch(cfg.file);
+        if (!res.ok) throw new Error(`Falla al cargar ${cfg.file}: ${res.status} ${res.statusText}. Asegúrate de que el archivo existe y que un servidor local está ejecutándose (usa Live Server en VSCode).`);
+        let gj = await res.json();
+        if (!gj || !gj.features || gj.features.length === 0) throw new Error('GeoJSON vacío o sin features.');
+        const tol = getTolerance(level);
+        for (let i = 0; i < gj.features.length; i++) {
+          try { 
+              if (level === 'Municipios') { 
+                  gj.features[i].geometry = turf.simplify(gj.features[i].geometry, {tolerance: tol, highQuality: true}); 
+              }
+          } catch (e) { console.warn('Simplificación falló para feature ' + i, e); }
+        }
+        await processFeaturesBatched(gj, {batch: 200});
+        rawGeoJsons[level] = gj;
+
+        if (!originalMapBounds) {
+          originalMapBounds = L.geoJSON(rawGeoJsons['Departamentos']).getBounds();
+        }
+    }
+
+    if (isSimulationActive) {
+        await applyToGJ(rawGeoJsons[level], { globalConfig, perDeptConfig, mode: selectedSimode });
+    }
+
+    if (level === 'Departamentos' && allDepartments.length === 0) {
+      const deptSet = new Set(rawGeoJsons[level].features.map(f => (f.properties.DEPTO || f.properties.Departamento || f.properties.depto)).filter(Boolean));
+      allDepartments = Array.from(deptSet).sort();
+      updateLang();
+    }
+    
+    updateMapLayer();
+    updateLegend(); 
+  } catch (err) { 
+      console.error('Error al cargar dataset:', err); 
+      alert(err.message || 'Error al cargar el dataset. Ver consola para detalles.'); 
+  } finally {
+    hideLoading();
+    enableUI();
+  }
+}
+
+async function loadPrerequisiteData(level) {
+    if (rawGeoJsons[level]) return;
+    try {
+        const cfg = levelConfigs[level];
+        const res = await fetch(cfg.file);
+        if (!res.ok) throw new Error(`Falha ao carregar dados de pré-requisito: ${cfg.file}`);
+        let gj = await res.json();
+        await processFeaturesBatched(gj, {batch: 500});
+        rawGeoJsons[level] = gj;
+    } catch(e) { console.error("Não foi possível carregar dados de pré-requisito:", e); }
+}
+
+// =======================================================
+// EXPORT FUNCTIONS
+// =======================================================
+function downloadMapImage() {
+    showLoading();
+    const mapElement = document.getElementById('map');
+    const leafletControls = mapElement.querySelectorAll('.leaflet-control-container');
+    leafletControls.forEach(el => el.style.display = 'none');
+
+    html2canvas(mapElement, {
+        useCORS: true,
+        logging: false
+    }).then(canvas => {
+        leafletControls.forEach(el => el.style.display = 'block');
+        
+        const link = document.createElement('a');
+        link.download = 'simulacao_mapa.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        hideLoading();
+    }).catch(err => {
+        console.error("Erro ao gerar imagem:", err);
+        leafletControls.forEach(el => el.style.display = 'block');
+        hideLoading();
+        alert("Ocorreu um erro ao tentar baixar a imagem.");
+    });
+}
+
+function downloadResultsXLSX() {
+    showLoading();
+    try {
+        const dataLevel = rawGeoJsons['Municipios'] ? 'Municipios' : 'Departamentos';
+        if (!rawGeoJsons[dataLevel]) {
+            throw new Error("Dados de municípios ou departamentos não carregados.");
+        }
+
+        const features = rawGeoJsons[dataLevel].features;
+        const dataToExport = features.map(f => {
+            const props = f.properties;
+            const pctA_key = 'Percent_' + Aname.replace(/\s/g, '_').replace(/[()]/g, '');
+            const pctB_key = 'Percent_' + Bname.replace(/\s/g, '_').replace(/[()]/g, '');
+            
+            return {
+                'Departamento': props.DEPTO,
+                'Município': props.MUNICIPIO || 'N/A',
+                [`Votos ${Aname.split(' (')[0]}`]: Math.round(props[Aname]),
+                [`% ${Aname.split(' (')[0]}`]: `${(props[pctA_key] * 100).toFixed(2)}%`,
+                [`Votos ${Bname.split(' (')[0]}`]: Math.round(props[Bname]),
+                [`% ${Bname.split(' (')[0]}`]: `${(props[pctB_key] * 100).toFixed(2)}%`,
+                'Votos Válidos': Math.round(props.VALIDOS),
+                'Votos Brancos': Math.round(props.BLANCOS),
+                'Votos Nulos': Math.round(props.NULOS),
+                'Votos Emitidos': Math.round(props.EMITIDOS),
+                'Inscritos': Math.round(props.INSCRITOS),
+                'Vencedor': props.vencedor,
+            };
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Resultados da Simulação");
+
+        XLSX.writeFile(workbook, "simulacao_resultados.xlsx");
+
+    } catch(err) {
+        console.error("Erro ao gerar XLSX:", err);
+        alert("Ocorreu um erro ao tentar baixar a planilha.");
+    } finally {
+        hideLoading();
+    }
+}
+
+
+// =======================================================
+// MAP & UI RENDERING
+// =======================================================
+function updateMapLayer(geojson = null) {
+  const currentLevel = datasetSelect.value;
+  const sourceGeoJson = geojson || (isSimulationActive ? rawGeoJsons[currentLevel] : null);
+  
+  if (geoLayer) map.removeLayer(geoLayer);
+
+  // If there's no data to show (e.g., after a reset or during a dept-specific preview), just show a clear layer.
+  if (!sourceGeoJson) {
+      geoLayer = L.geoJSON(rawGeoJsons[currentLevel], { // show the base shapes
+        style: () => ({ fillColor: '#949494', fillOpacity: 0.85, color: 'white', weight: 0.8 })
+      }).addTo(map);
+      return;
+  }
+  
+  let featuresToDisplay = sourceGeoJson.features;
+
+  // This filter is for the FINAL applied simulation, not the preview.
+  if (isSimulationActive && activeMapFilter.level === 'Departamentos' && activeMapFilter.name && !geojson) {
+    featuresToDisplay = featuresToDisplay.filter(f => (f.properties.DEPTO || f.properties.Departamento || f.properties.depto) === activeMapFilter.name);
+  }
+  
+  geoLayer = L.geoJSON(featuresToDisplay, {
+    renderer: L.canvas({padding: 0.5}),
+    style: f => {
+      // If simulation is not active, render gray
+      if (!isSimulationActive && !isPreviewActive) {
+        return { fillColor: '#949494', fillOpacity: 0.85, color: 'white', weight: 0.8 };
+      }
+      return { fillColor: adjust_color(cores_main[f.properties.vencedor] || '#9ca3af', f.properties.percent_vencedor || 0, currentLevel), fillOpacity: 0.85, color: 'white', weight: 0.8 };
+    },
+    onEachFeature: (feature, layer) => {
+      layer.on({
+        click: e => {
+          const t = translations[currentLang];
+          // Popup should show only if a simulation has been formally applied.
+          if (!isSimulationActive) {
+            L.popup()
+              .setLatLng(e.latlng)
+              .setContent(t.noSimulationMessage)
+              .openOn(map);
+          } else {
+            renderResultPanel(feature.properties, currentLevel);
+          }
+          L.DomEvent.stop(e);
+        },
+        mouseover: () => layer.setStyle({ weight: 2.2, fillOpacity: 0.95 }),
+        mouseout: () => geoLayer.resetStyle(layer)
+      });
+    }
+  }).addTo(map);
+
+  if (!geojson) {
+      clearFilterBtn.style.display = activeMapFilter.name ? 'block' : 'none';
+      if (document.getElementById('fitOnLoad').checked) {
+          const bounds = (activeMapFilter.name && geoLayer.getBounds().isValid()) ? geoLayer.getBounds() : originalMapBounds;
+          if (bounds && bounds.isValid()) map.fitBounds(bounds, {padding: [20, 20]});
+      }
+  }
+}
+
+function renderResultPanel(props, level) {
+  const t = translations[currentLang];
+  let title = ''; let subtitle = '';
+  if (level === 'Departamentos') { title = (props.DEPTO || 'N/A').toUpperCase(); subtitle = t.deptSubtitle; }
+  else { title = `${(props.MUNICIPIO || 'N/A').toUpperCase()}, ${props.DEPTO || 'N/A'}`; subtitle = t.munSubtitle; }
+  
+  const aPct = props['Percent_' + Aname.replace(/\s/g, '_').replace(/[()]/g, '')] || 0;
+  const bPct = props['Percent_' + Bname.replace(/\s/g, '_').replace(/[()]/g, '')] || 0;
+  const badgeA = props.vencedor === Aname ? '<span class="winner-badge">✓</span>' : '';
+  const badgeB = props.vencedor === Bname ? '<span class="winner-badge">✓</span>' : '';
+  
+  let filterButton = '';
+  if (level === 'Departamentos') {
+      const deptName = props.DEPTO || props.Departamento || props.depto;
+      filterButton = `<button onclick="setMapFilter('Departamentos', '${deptName}')" style="width:100%;margin-top:8px;">${t.filterView} (${deptName})</button>`;
+  }
+  
+  const originalProps = props.__orig || props;
+  const abstencao = (originalProps.INSCRITOS || 0) - (props.EMITIDOS || 0);
+
+  resultPanel.innerHTML = `<div class="title">${title}</div><div class="small">${subtitle}</div>
+    <div style="display:flex;gap:8px;margin-top:8px"><div style="flex:1;padding:8px;background:white;border-radius:8px"><div style="font-weight:700;color:${cores_main[Aname]}">${Aname.split(' (')[0]} ${badgeA}</div><div style="font-weight:700">${formatPercent(aPct)}</div><div class="small">${formatNumber(props[Aname]||0)} ${t.votos}</div></div>
+    <div style="flex:1;padding:8px;background:white;border-radius:8px"><div style="font-weight:700;color:${cores_main[Bname]}">${Bname.split(' (')[0]} ${badgeB}</div><div style="font-weight:700">${formatPercent(bPct)}</div><div class="small">${formatNumber(props[Bname]||0)} ${t.votos}</div></div></div>
+    <div style="margin-top:8px;border-top:1px solid #eef1f6;padding-top:8px;font-size:12px;color:var(--muted)">
+      <div style="display:flex;justify-content:space-between"><div>${t.brancosResult}</div><div>${formatNumber(props.BLANCOS || 0)}</div></div>
+      <div style="display:flex;justify-content:space-between"><div>${t.nulosResult}</div><div>${formatNumber(props.NULOS || 0)}</div></div>
+      <div style="display:flex;justify-content:space-between"><div>${t.validos}</div><div>${formatNumber(props.VALIDOS || 0)}</div></div>
+      <div style="display:flex;justify-content:space-between"><div>${t.abstResult}</div><div>${formatNumber(abstencao)}</div></div>
+      <div style="display:flex;justify-content:space-between"><div>${t.participacao}</div><div>${formatPercent(props.Percent_Participacao || 0)}</div></div>
+    </div>
+    ${filterButton}`;
+  resultPanel.style.display = 'block';
+}
+
+function setMapFilter(level, name) {
+    activeMapFilter = { level, name };
+    datasetSelect.value = 'Municipios';
+    loadDataset('Municipios'); // This will trigger updateMapLayer with the filter
+    resultPanel.style.display = 'none';
+}
+
+function clearMapFilter(isReset = false) {
+    activeMapFilter = { level: null, name: null };
+    if (isReset) {
+        datasetSelect.value = 'Departamentos';
+        updateMapLayer(); // should render gray map
+    } else {
+        loadDataset(datasetSelect.value); // Reload current level without filter
+    }
+}
+
+function renderNationalPanel(data) {
+  const t = translations[currentLang];
+  const {aggA, aggB, aPct, bPct, totalValidos, aggsBr, aggsNu, totalEmitidos, totalInscritos, totalAb, partPct} = data;
+  
+  let winner = 'Tossup';
+  if (aPct > bPct) winner = Aname;
+  else if (bPct > aPct) winner = Bname;
+
+  const badgeA = winner === Aname ? '<span class="winner-badge">✓</span>' : '';
+  const badgeB = winner === Bname ? '<span class="winner-badge">✓</span>' : '';
+  
+  nationalPanel.innerHTML = `<div class="title">${isSimulationActive ? t.nationalTitleSimulated : t.nationalTitle}</div>
+    <div style="display:flex;gap:8px;margin-top:8px"><div style="flex:1;padding:8px;background:white;border-radius:8px"><div style="font-weight:700;color:${cores_main[Aname]}">${Aname.split(' (')[0]} ${badgeA}</div><div style="font-weight:700">${formatPercent(aPct)}</div><div class="small">${formatNumber(aggA)} ${t.votos}</div></div>
+    <div style="flex:1;padding:8px;background:white;border-radius:8px"><div style="font-weight:700;color:${cores_main[Bname]}">${Bname.split(' (')[0]} ${badgeB}</div><div style="font-weight:700">${formatPercent(bPct)}</div><div class="small">${formatNumber(aggB)} ${t.votos}</div></div></div>
+    <div style="margin-top:8px;border-top:1px solid #eef1f6;padding-top:8px;font-size:12px;color:var(--muted)">
+      <div style="display:flex;justify-content:space-between"><div>${t.brancosResult}</div><div>${formatNumber(aggsBr)}</div></div>
+      <div style="display:flex;justify-content:space-between"><div>${t.nulosResult}</div><div>${formatNumber(aggsNu)}</div></div>
+      <div style="display:flex;justify-content:space-between"><div>${t.validos}</div><div>${formatNumber(totalValidos)}</div></div>
+      <div style="display:flex;justify-content:space-between"><div>${t.abstResult}</div><div>${formatNumber(totalAb)}</div></div>
+      <div style="display:flex;justify-content:space-between"><div>${t.participacao}</div><div>${formatPercent(partPct)}</div></div>
+    </div>`;
+}
+
+function updateLegend(){ 
+  miniLegend.innerHTML = `<div style="font-weight:700">Legenda</div><div style="display:flex;gap:6px;margin-top:6px">` + finalistas.map(c=> `<div style="background:${cores_main[c]};padding:6px 8px;color:white;border-radius:8px;font-weight:700;font-size:12px">${c.split(' (')[0]}</div>`).join('') + `</div><div class="small" style="margin-top:4px">Intensidade por % de vitória.</div>`; 
+}
+
+// =======================================================
+// LIVE PREVIEW FUNCTIONS
+// =======================================================
+function triggerMapPreview() {
+    clearTimeout(debounceTimeout);
+    debounceTimeout = setTimeout(updateMapPreview, 300);
+}
+
+async function updateMapPreview() {
+    const level = datasetSelect.value;
+    if (!rawGeoJsons[level]) return;
+
+    isPreviewActive = true;
+
+    // Use a fresh clone of the raw data for the preview calculation
+    let tempGj = {
+        type: "FeatureCollection",
+        features: JSON.parse(JSON.stringify(rawGeoJsons[level].features))
+    };
+
+    let featuresToPreview = tempGj.features;
+    // If in detailed mode and a department is selected, filter the preview
+    if (selectedSimode === 'per_dept' && currentDeptSimTarget) {
+        featuresToPreview = tempGj.features.filter(f => (f.properties.DEPTO || f.properties.Departamento || f.properties.depto) === currentDeptSimTarget);
+    }
+    tempGj.features = featuresToPreview;
+
+    const params = {
+        globalConfig: globalConfig,
+        perDeptConfig: perDeptConfig,
+        mode: selectedSimode
+    };
+
+    // Temporarily add the current slider values to the perDeptConfig for calculation
+    if (selectedSimode === 'per_dept' && currentDeptSimTarget) {
+        const currentConfig = {
+            eliminated: {}, retA: parseFloat(retA.value), retB: parseFloat(retB.value),
+            recovery: { br: {}, nu: {}, ab: {} }
+        };
+        simTransferContent.querySelectorAll('.transfer-group').forEach(group => {
+            const cand = group.dataset.cand;
+            currentConfig.eliminated[cand] = { toAbst: parseFloat(group.querySelector('.abst-slider').value), toBlank: parseFloat(group.querySelector('.blank-slider').value), toNull: parseFloat(group.querySelector('.null-slider').value), toA: parseFloat(group.querySelector('.to-finalist-slider').value) };
+        });
+        simRecoveryContent.querySelectorAll('.recovery-group').forEach(group => {
+            const type = group.dataset.type;
+            currentConfig.recovery[type] = { rate: parseFloat(group.querySelector('.recovery-rate-slider').value), toA: parseFloat(group.querySelector('.recovery-finalist-slider').value) };
+        });
+        // This is temporary for the preview calculation, not saved yet
+        params.perDeptConfig = { ...perDeptConfig, [currentDeptSimTarget]: currentConfig };
+    }
+
+    await applyToGJ(tempGj, params);
+    
+    // In detailed mode, clear the main map and only show the previewed department
+    if (selectedSimode === 'per_dept' && currentDeptSimTarget) {
+        if (geoLayer) map.removeLayer(geoLayer);
+        // show the base shapes in gray for context
+        geoLayer = L.geoJSON(rawGeoJsons[level], {
+            style: f => {
+                // Check if the feature is NOT the one being previewed
+                if ((f.properties.DEPTO || f.properties.Departamento || f.properties.depto) !== currentDeptSimTarget) {
+                    return { fillColor: '#e9ecef', fillOpacity: 0.7, color: 'white', weight: 0.5 };
+                }
+                // hide the base layer for the selected department, so the preview layer can show on top
+                return { fillOpacity: 0, stroke: false };
+            }
+        }).addTo(map);
+    }
+    
+    updateMapLayer(tempGj);
+    tempGj = null; // Help garbage collection
+}
+
+
+function calculateNationalPreview() {
+    if (allDepartments.length === 0 || !rawGeoJsons['Municipios']) {
+        return { A: 0, B: 0 };
+    }
+    
+    const totalSimVotes = { [Aname]: 0, [Bname]: 0 };
+
+    allDepartments.forEach(dept => {
+        const origVotes = getOriginalVotesForSelectedArea(dept);
+        if (!origVotes) return;
+        
+        let config = perDeptConfig[dept] || globalConfig;
+        if(selectedSimode === 'per_dept' && dept === currentDeptSimTarget) {
+            // Use live slider values for the currently selected department
+            config = {
+                eliminated: {}, retA: parseFloat(retA.value), retB: parseFloat(retB.value),
+                recovery: { br: {}, nu: {}, ab: {} }
+            };
+            simTransferContent.querySelectorAll('.transfer-group').forEach(group => {
+                const cand = group.dataset.cand;
+                config.eliminated[cand] = { toAbst: parseFloat(group.querySelector('.abst-slider').value), toBlank: parseFloat(group.querySelector('.blank-slider').value), toNull: parseFloat(group.querySelector('.null-slider').value), toA: parseFloat(group.querySelector('.to-finalist-slider').value) };
+            });
+            simRecoveryContent.querySelectorAll('.recovery-group').forEach(group => {
+                const type = group.dataset.type;
+                config.recovery[type] = { rate: parseFloat(group.querySelector('.recovery-rate-slider').value), toA: parseFloat(group.querySelector('.recovery-finalist-slider').value) };
+            });
+        }
+
+        const simVotes = { [Aname]: origVotes[Aname] * ((config.retA ?? 100) / 100), [Bname]: origVotes[Bname] * ((config.retB ?? 100) / 100) };
+        Object.keys(config.eliminated).forEach(cand => {
+            const votes = origVotes[cand] || 0;
+            const conf = config.eliminated[cand];
+            const totalLossPct = Math.min(100, (conf.toAbst || 0) + (conf.toBlank || 0) + (conf.toNull || 0));
+            const remaining = votes * (1 - (totalLossPct / 100));
+            if (remaining > 0) {
+                simVotes[Aname] += remaining * ((conf.toA || 50) / 100);
+                simVotes[Bname] += remaining * (1 - (conf.toA || 50) / 100);
+            }
+        });
+        const recovBr = origVotes.BLANCOS * ((config.recovery.br?.rate ?? 0) / 100);
+        simVotes[Aname] += recovBr * ((config.recovery.br?.toA ?? 50) / 100);
+        simVotes[Bname] += recovBr * (1 - (config.recovery.br?.toA ?? 50) / 100);
+        const recovNu = origVotes.NULOS * ((config.recovery.nu?.rate ?? 0) / 100);
+        simVotes[Aname] += recovNu * ((config.recovery.nu?.toA ?? 50) / 100);
+        simVotes[Bname] += recovNu * (1 - (config.recovery.nu?.toA ?? 50) / 100);
+        const recovAb = origVotes.ABSTENCAO * ((config.recovery.ab?.rate ?? 0) / 100);
+        simVotes[Aname] += recovAb * ((config.recovery.ab?.toA ?? 50) / 100);
+        simVotes[Bname] += recovAb * (1 - (config.recovery.ab?.toA ?? 50) / 100);
+        
+        totalSimVotes[Aname] += simVotes[Aname];
+        totalSimVotes[Bname] += simVotes[Bname];
+    });
+
+    return totalSimVotes;
+}
+
+function updateNationalPreview() {
+    const result = calculateNationalPreview();
+    if (!result) return;
+    
+    const totalValidos = result[Aname] + result[Bname];
+    const pctA = totalValidos > 0 ? (result[Aname] / totalValidos) : 0;
+    const pctB = totalValidos > 0 ? (result[Bname] / totalValidos) : 0;
+
+    const badgeA = pctA > pctB ? '<span id="preview-winner-badge">✓</span>' : '';
+    const badgeB = pctB > pctA ? '<span id="preview-winner-badge">✓</span>' : '';
+
+    nationalPreviewContent.innerHTML = `
+      <div class="result-row">
+        <span class="cand-name" style="color:${cores_main[Aname]}">${Aname.split(' (')[0]} ${badgeA}</span>
+        <div>
+          <span class="cand-pct">${formatPercent(pctA)}</span>
+          <span class="cand-votes small">(${formatNumber(result[Aname])})</span>
+        </div>
+      </div>
+      <div class="result-row">
+        <span class="cand-name" style="color:${cores_main[Bname]}">${Bname.split(' (')[0]} ${badgeB}</span>
+        <div>
+          <span class="cand-pct">${formatPercent(pctB)}</span>
+          <span class="cand-votes small">(${formatNumber(result[Bname])})</span>
+        </div>
+      </div>
+    `;
+}
+
+
+// =======================================================
+// EVENT LISTENERS & INITIALIZATION
+// =======================================================
+datasetSelect.addEventListener('change', () => {
+    loadDataset(datasetSelect.value).then(() => {
+        // If live preview is active, refresh it for the new level
+        if (isPreviewActive) {
+            triggerMapPreview();
+        }
+    });
+});
+
+applySim.addEventListener('click', applySimulation);
+resetSim.addEventListener('click', resetSimulation);
+clearFilterBtn.addEventListener('click', () => clearMapFilter(false));
+openTutorial.addEventListener('click', () => modalBackdrop.style.display = 'flex');
+closeModal.addEventListener('click', () => modalBackdrop.style.display = 'none');
+modalBackdrop.addEventListener('click', (e) => { if (e.target === modalBackdrop) modalBackdrop.style.display = 'none'; });
+downloadImageBtn.addEventListener('click', downloadMapImage);
+downloadXlsxBtn.addEventListener('click', downloadResultsXLSX);
+
+openSim.addEventListener('click', async () => {
+    const isHidden = simPanel.style.display === 'none';
+    if (isHidden) {
+        // Ensure both datasets are available for preview switching
+        showLoading();
+        await loadPrerequisiteData('Departamentos');
+        await loadPrerequisiteData('Municipios');
+        hideLoading();
+        
+        simPanel.style.display = 'block';
+        renderSimUI();
+        triggerMapPreview();
+    } else {
+        simPanel.style.display = 'none';
+        isPreviewActive = false;
+        previewGj = null; // Free up memory
+        // Restore map to its actual state (either gray or the applied simulation)
+        updateMapLayer();
+    }
+});
+
+retA.addEventListener('input', (e) => { valRetA.textContent = `${Math.round(e.target.value)}%`; saveCurrentValues(); updatePreviewPanel(); if(selectedSimode === 'per_dept') updateNationalPreview(); triggerMapPreview(); });
+retB.addEventListener('input', (e) => { valRetB.textContent = `${Math.round(e.target.value)}%`; saveCurrentValues(); updatePreviewPanel(); if(selectedSimode === 'per_dept') updateNationalPreview(); triggerMapPreview(); });
+langSelect.addEventListener('change', () => { currentLang = langSelect.value; updateLang(); });
+
+simModeSelect.addEventListener('change', (e) => {
+    const newMode = e.target.value;
+    if (newMode !== selectedSimode) {
+        if (confirm(translations[currentLang].switchModeConfirm)) {
+            // User confirmed, so reset everything and switch mode
+            resetSimulation(); // This will also reset the UI state
+            // After reset, set the new mode
+            setTimeout(() => {
+                selectedSimode = newMode;
+                simModeSelect.value = newMode;
+                perDeptFilterContainer.style.display = newMode === 'per_dept' ? 'block' : 'none';
+                nationalPreviewPanel.style.display = newMode === 'per_dept' ? 'block' : 'none';
+                updateSimTitle();
+                renderSimUI();
+                updateApplyButtonState();
+                triggerMapPreview();
+            }, 50); // a small delay to ensure reset completes
+        } else {
+            // User canceled, revert dropdown to the old value
+            e.target.value = selectedSimode;
+            return;
+        }
+    }
+});
+
+departmentFilter.addEventListener('change', (e) => {
+    if (currentDeptSimTarget) saveCurrentValues();
+    currentDeptSimTarget = (e.target.value === '__NONE__') ? null : e.target.value;
+    renderSimUI();
+    triggerMapPreview();
+});
+
+// Init
+(function(){
+  initializeConfig();
+  updateLang();
+  loadDataset(datasetSelect.value);
+})();
+</script>
+</body>
+</html>

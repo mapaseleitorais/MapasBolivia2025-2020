@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title data-translate-key="pageTitle">Elecciones Bolivianas - Mapas Interativos</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+<style>
+    :root {
+        --dark-mode-bg: #121212;
+        --dark-mode-fg: #e0e0e0;
+        --dark-mode-nav-bg: #1e1e1e;
+        --dark-mode-nav-border: #444;
+        --dark-mode-btn-bg: #333;
+        --dark-mode-btn-hover: #444;
+        --dark-mode-accent: #B38600;
+        --dark-mode-link: #4da6ff;
+        --dark-mode-link-hover: #80bfff;
+    }
+
+    body {
+        font-family: 'Roboto', sans-serif;
+        margin: 0;
+        background: #f8f9fa;
+        color: #212529;
+        transition: background-color 0.3s, color 0.3s;
+    }
+
+    /* Cabeçalho fixo */
+    header {
+        background: #FFD100;
+        padding: 10px;
+        text-align: center;
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    header img {
+        height: 110px;
+    }
+
+    .lang-selector {
+        margin-top: 10px;
+        padding: 5px;
+        border-radius: 4px;
+        border: 1px solid #ccc;
+    }
+
+    /* Barra fixa de navegação */
+    nav {
+        display: flex;
+        justify-content: center;
+        background: #fff;
+        border-bottom: 1px solid #ccc;
+        position: sticky;
+        top: 130px;
+        z-index: 999;
+        padding: 10px 0;
+        flex-wrap: wrap;
+    }
+
+    nav a, .nav-item {
+        margin: 5px 15px;
+        text-decoration: none;
+        font-weight: bold;
+        color: #007bff;
+        cursor: pointer;
+        transition: color 0.3s;
+    }
+
+    nav a:hover, .nav-item:hover {
+        color: #0056b3;
+    }
+    
+    .nav-item.active {
+        color: #0056b3;
+        border-bottom: 2px solid #0056b3;
+    }
+
+    /* Botões de nível */
+    .tabs {
+        text-align: center;
+        margin: 15px 0;
+    }
+
+    .tabs button {
+        margin: 5px;
+        padding: 10px 14px;
+        border: none;
+        border-radius: 4px;
+        background: #f0f0f0;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background 0.3s;
+    }
+
+    .tabs button:hover {
+        background: #ddd;
+    }
+
+    /* Contêiner principal */
+    .map-container {
+        display: flex;
+        justify-content: center;
+        align-items: start;
+        gap: 15px;
+        width: 95%;
+        max-width: 2800px; 
+        margin: 0 auto;
+        padding: 15px;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        flex-wrap: wrap;
+        min-height: 850px;
+    }
+
+    .map-frame {
+        flex: 1;
+        min-width: 48%;
+        height: 1050px;
+    }
+    
+    .map-frame iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+        border-radius: 8px;
+    }
+
+    footer {
+        background: #fff;
+        text-align: center;
+        padding: 20px;
+        font-size: 0.9em;
+        color: #555;
+        margin-top: 40px;
+        transition: background-color 0.3s, color 0.3s;
+    }
+
+    .hidden {
+        display: none !important;
+    }
+
+    /* Dark Mode Styles */
+    body.dark-mode {
+        background: var(--dark-mode-bg);
+        color: var(--dark-mode-fg);
+    }
+
+    body.dark-mode header {
+        background: var(--dark-mode-accent);
+    }
+
+    body.dark-mode nav {
+        background: var(--dark-mode-nav-bg);
+        border-bottom: 1px solid var(--dark-mode-nav-border);
+    }
+
+    body.dark-mode nav a, body.dark-mode .nav-item {
+        color: var(--dark-mode-link);
+    }
+
+    body.dark-mode nav a:hover, body.dark-mode .nav-item:hover {
+        color: var(--dark-mode-link-hover);
+    }
+
+    body.dark-mode .nav-item.active {
+        color: var(--dark-mode-link-hover);
+        border-bottom: 2px solid var(--dark-mode-link-hover);
+    }
+
+    body.dark-mode .tabs button {
+        background: var(--dark-mode-btn-bg);
+        color: var(--dark-mode-fg);
+    }
+
+    body.dark-mode .tabs button:hover {
+        background: var(--dark-mode-btn-hover);
+    }
+
+    body.dark-mode .map-container {
+        background: var(--dark-mode-nav-bg);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+
+    body.dark-mode footer {
+        background: var(--dark-mode-nav-bg);
+        color: #bbb;
+    }
+</style>
+</head>
+<body>
+
+<header>
+    <img src="Logo Branca Mapas Bolivia Vota.png" alt="Logo Elecciones Bolivianas">
+    <select class="lang-selector" id="langSelect">
+        <option value="es">Español</option>
+        <option value="pt">Português</option>
+        <option value="en">English</option>
+    </select>
+</header>
+
+<nav>
+    <a href="#" class="nav-item active" id="mapa2025Btn" data-translate-key="elections2025">Elecciones 2025</a>
+    <a href="#" class="nav-item" id="mapa2020Btn" data-translate-key="elections2020">Elecciones 2020</a>
+    <a href="#" class="nav-item" id="simuladorBtn" data-translate-key="simulator2025">Simulador Segunda Vuelta 2025</a>
+</nav>
+
+<div class="tabs">
+    <button id="dualModeBtn" data-translate-key="open2Maps">Abrir 2 mapas</button>
+    <button id="darkModeBtn" data-translate-key="darkMode">Modo Oscuro</button>
+</div>
+
+<div class="map-container" id="mapContainer">
+    </div>
+
+<footer>
+    <p data-translate-key="footerDisclaimer">
+        La ubicación y los límites de los municipios, provincias y departamentos tienen un valor referencial y de apoyo. 
+        En ningún caso pueden servir para determinar legalmente sus límites ni posición geográfica.
+    </p>
+    <p>
+        <span data-translate-key="footerSource">Fuente de los datos:</span> 
+        <a href="https://www.oep.org.bo/" target="_blank">Órgano Electoral Plurinacional</a>
+    </p>
+    <p>
+        <span data-translate-key="footerFollow">Síguenos en</span> 
+        <a href="https://x.com/MapasEleitorais" target="_blank">@MapasEleitorais</a>
+    </p>
+    <p>
+        <span data-translate-key="footerDev">Desarrollado por</span> 
+        <a href="https://x.com/luizdaniel__" target="_blank">@luizdaniel__</a>
+    </p>
+    <p>
+        © <span data-translate-key="footerYear">2025</span> <span data-translate-key="footerRights">Mapas Eleitorais - Todos los derechos reservados</span>
+    </p>
+</footer>
+
+<script>
+    const translations = {
+        es: {
+            pageTitle: "Elecciones Bolivianas - Mapas Interactivos",
+            elections2025: "Elecciones 2025",
+            elections2020: "Elecciones 2020",
+            simulator2025: "Simulador Segunda Vuelta 2025",
+            open2Maps: "Abrir 2 mapas",
+            close2Maps: "Cerrar 2 mapas",
+            darkMode: "Modo Oscuro",
+            lightMode: "Modo Claro",
+            footerDisclaimer: "La ubicación y los límites de los municipios, provincias y departamentos tienen un valor referencial y de apoyo. En ningún caso pueden servir para determinar legalmente sus límites ni posición geográfica.",
+            footerSource: "Fuente de los datos:",
+            footerFollow: "Síguenos en",
+            footerDev: "Desarrollado por",
+            footerRights: "Mapas Eleitorais - Todos los derechos reservados",
+            footerYear: "2025"
+        },
+        pt: {
+            pageTitle: "Eleições Bolivianas - Mapas Interativos",
+            elections2025: "Eleições 2025",
+            elections2020: "Eleições 2020",
+            simulator2025: "Simulador Segundo Turno 2025",
+            open2Maps: "Abrir 2 mapas",
+            close2Maps: "Fechar 2 mapas",
+            darkMode: "Modo Escuro",
+            lightMode: "Modo Claro",
+            footerDisclaimer: "A localização e os limites dos municípios, províncias e departamentos têm um valor de referência e de apoio. Em nenhum caso podem servir para determinar legalmente seus limites ou posição geográfica.",
+            footerSource: "Fonte dos dados:",
+            footerFollow: "Siga-nos em",
+            footerDev: "Desenvolvido por",
+            footerRights: "Mapas Eleitorais - Todos os direitos reservados",
+            footerYear: "2025"
+        },
+        en: {
+            pageTitle: "Bolivian Elections - Interactive Maps",
+            elections2025: "Elections 2025",
+            elections2020: "Elections 2020",
+            simulator2025: "2025 Runoff Simulator",
+            open2Maps: "Open 2 maps",
+            close2Maps: "Close 2 maps",
+            darkMode: "Dark Mode",
+            lightMode: "Light Mode",
+            footerDisclaimer: "The location and boundaries of municipalities, provinces, and departments have a reference and support value. Under no circumstances can they be used to legally determine their boundaries or geographic position.",
+            footerSource: "Data source:",
+            footerFollow: "Follow us on",
+            footerDev: "Developed by",
+            footerRights: "Mapas Eleitorais - All rights reserved",
+            footerYear: "2025"
+        }
+    };
+    
+    let currentLang = 'es';
+    let currentView = '2025';
+    let dualMode = false;
+    let darkMode = false;
+
+    const mapConfigs = {
+        '2025': 'mapa 2025 1v.html',
+        '2020': 'mapa 2020.html',
+        'simulador': 'Simulador 2°V Bolivia 2025.html'
+    };
+
+    const mapContainer = document.getElementById('mapContainer');
+    const dualModeBtn = document.getElementById('dualModeBtn');
+    const darkModeBtn = document.getElementById('darkModeBtn');
+    const langSelect = document.getElementById('langSelect');
+    const navItems = document.querySelectorAll('.nav-item');
+
+    function updateLanguage() {
+        document.documentElement.lang = currentLang;
+        const elements = document.querySelectorAll('[data-translate-key]');
+        elements.forEach(el => {
+            const key = el.getAttribute('data-translate-key');
+            if (translations[currentLang][key]) {
+                el.innerHTML = translations[currentLang][key];
+            }
+        });
+
+        dualModeBtn.textContent = dualMode ? translations[currentLang].close2Maps : translations[currentLang].open2Maps;
+        darkModeBtn.textContent = darkMode ? translations[currentLang].lightMode : translations[currentLang].darkMode;
+    }
+
+    function createIframe(src) {
+        const iframeWrapper = document.createElement('div');
+        iframeWrapper.className = 'map-frame';
+        const iframe = document.createElement('iframe');
+        iframe.src = src;
+        iframeWrapper.appendChild(iframe);
+        return iframeWrapper;
+    }
+
+    function updateView() {
+        mapContainer.innerHTML = '';
+        if (dualMode) {
+            let map1Src;
+            let map2Src;
+            
+            if (currentView === 'simulador') {
+                map1Src = mapConfigs['simulador'];
+                map2Src = mapConfigs['2025'];
+            } else {
+                map1Src = mapConfigs['2025'];
+                map2Src = mapConfigs['2020'];
+            }
+            
+            mapContainer.appendChild(createIframe(map1Src));
+            mapContainer.appendChild(createIframe(map2Src));
+
+        } else {
+            const src = mapConfigs[currentView];
+            if (src) {
+                mapContainer.appendChild(createIframe(src));
+            }
+        }
+    }
+
+    function setActiveNavItem() {
+        navItems.forEach(item => item.classList.remove('active'));
+        if (currentView === '2025') {
+            document.getElementById('mapa2025Btn').classList.add('active');
+        } else if (currentView === '2020') {
+            document.getElementById('mapa2020Btn').classList.add('active');
+        } else if (currentView === 'simulador') {
+            document.getElementById('simuladorBtn').classList.add('active');
+        }
+    }
+
+    function toggleDualMode() {
+        dualMode = !dualMode;
+        updateView();
+        updateLanguage();
+    }
+
+    function toggleDarkMode() {
+        darkMode = !darkMode;
+        document.body.classList.toggle('dark-mode', darkMode);
+        updateLanguage();
+    }
+
+    document.getElementById('mapa2025Btn').addEventListener('click', (e) => {
+        e.preventDefault();
+        dualMode = false;
+        currentView = '2025';
+        updateView();
+        setActiveNavItem();
+    });
+
+    document.getElementById('mapa2020Btn').addEventListener('click', (e) => {
+        e.preventDefault();
+        dualMode = false;
+        currentView = '2020';
+        updateView();
+        setActiveNavItem();
+    });
+
+    document.getElementById('simuladorBtn').addEventListener('click', (e) => {
+        e.preventDefault();
+        dualMode = false;
+        currentView = 'simulador';
+        updateView();
+        setActiveNavItem();
+    });
+
+    dualModeBtn.addEventListener('click', toggleDualMode);
+    darkModeBtn.addEventListener('click', toggleDarkMode);
+    langSelect.addEventListener('change', (e) => {
+        currentLang = e.target.value;
+        updateLanguage();
+    });
+    
+    // Initial setup
+    updateView();
+    updateLanguage();
+    setActiveNavItem();
+</script>
+</body>
+</html>
