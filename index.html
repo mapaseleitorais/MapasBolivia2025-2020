@@ -3,7 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-src 'self'; img-src 'self' data:;">
+
 <title data-translate-key="pageTitle">Elecciones Bolivianas - Mapas Interativos</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
 <style>
     :root {
@@ -224,17 +231,23 @@
         La ubicación y los límites de los municipios, provincias y departamentos tienen un valor referencial y de apoyo. 
         En ningún caso pueden servir para determinar legalmente sus límites ni posición geográfica.
     </p>
+    <p data-translate-key="footerTutorial">
+        Lea nuestro tutorial para saber cómo hacer un buen uso de los mapas interactivos y del simulador.
+    </p>
+    <p data-translate-key="footerFeedback">
+        Su feedback es importante. En caso de que encuentre errores, resultados incorrectos o bugs en el simulador, infórmenos a través de nuestro X por mensaje o envíe un correo electrónico a mapaseleitoraisok@gmail.com para que podamos corregirlo.
+    </p>
     <p>
         <span data-translate-key="footerSource">Fuente de los datos:</span> 
-        <a href="https://www.oep.org.bo/" target="_blank">Órgano Electoral Plurinacional</a>
+        <a href="https://www.oep.org.bo/" target="_blank" rel="noopener noreferrer">Órgano Electoral Plurinacional</a>
     </p>
     <p>
         <span data-translate-key="footerFollow">Síguenos en</span> 
-        <a href="https://x.com/MapasEleitorais" target="_blank">@MapasEleitorais</a>
+        <a href="https://x.com/MapasEleitorais" target="_blank" rel="noopener noreferrer">@MapasEleitorais</a>
     </p>
     <p>
         <span data-translate-key="footerDev">Desarrollado por</span> 
-        <a href="https://x.com/luizdaniel__" target="_blank">@luizdaniel__</a>
+        <a href="https://x.com/luizdaniel__" target="_blank" rel="noopener noreferrer">@luizdaniel__</a>
     </p>
     <p>
         © <span data-translate-key="footerYear">2025</span> <span data-translate-key="footerRights">Mapas Eleitorais - Todos los derechos reservados</span>
@@ -253,6 +266,8 @@
             darkMode: "Modo Oscuro",
             lightMode: "Modo Claro",
             footerDisclaimer: "La ubicación y los límites de los municipios, provincias y departamentos tienen un valor referencial y de apoyo. En ningún caso pueden servir para determinar legalmente sus límites ni posición geográfica.",
+            footerTutorial: "Lea el tutorial para saber cómo hacer un buen uso de los mapas interactivos y del simulador.",
+            footerFeedback: "Su feedback es importante. En caso de que encuentre errores, resultados incorrectos o bugs en el simulador, infórmenos a través de nuestro X por mensaje o envíe un correo electrónico a mapaseleitoraisok@gmail.com para que podamos corregirlo.",
             footerSource: "Fuente de los datos:",
             footerFollow: "Síguenos en",
             footerDev: "Desarrollado por",
@@ -269,6 +284,8 @@
             darkMode: "Modo Escuro",
             lightMode: "Modo Claro",
             footerDisclaimer: "A localização e os limites dos municípios, províncias e departamentos têm um valor de referência e de apoio. Em nenhum caso podem servir para determinar legalmente seus limites ou posição geográfica.",
+            footerTutorial: "Leia o tutorial para saber como fazer bom uso dos mapas interativos e do simulador.",
+            footerFeedback: "Seu feedback é importante. Caso encontre erros, resultados incorretos ou bugs no simulador, nos informe através do nosso X por mensagem ou envie um e-mail para mapaseleitoraisok@gmail.com para que possamos corrigir.",
             footerSource: "Fonte dos dados:",
             footerFollow: "Siga-nos em",
             footerDev: "Desenvolvido por",
@@ -285,6 +302,8 @@
             darkMode: "Dark Mode",
             lightMode: "Light Mode",
             footerDisclaimer: "The location and boundaries of municipalities, provinces, and departments have a reference and support value. Under no circumstances can they be used to legally determine their boundaries or geographic position.",
+            footerTutorial: "Read our tutorial to learn how to make good use of the interactive maps and the simulator.",
+            footerFeedback: "Your feedback is important. If you find any errors, incorrect results, or bugs in the simulator, please inform us via a message on our X or send an email to mapaseleitoraisok@gmail.com so we can correct it.",
             footerSource: "Data source:",
             footerFollow: "Follow us on",
             footerDev: "Developed by",
@@ -315,7 +334,7 @@
         const elements = document.querySelectorAll('[data-translate-key]');
         elements.forEach(el => {
             const key = el.getAttribute('data-translate-key');
-            if (translations[currentLang][key]) {
+            if (translations[currentLang] && translations[currentLang][key]) {
                 el.innerHTML = translations[currentLang][key];
             }
         });
@@ -324,48 +343,54 @@
         darkModeBtn.textContent = darkMode ? translations[currentLang].lightMode : translations[currentLang].darkMode;
     }
 
-    function createIframe(src) {
+    function createIframe(src, title) {
         const iframeWrapper = document.createElement('div');
         iframeWrapper.className = 'map-frame';
         const iframe = document.createElement('iframe');
         iframe.src = src;
+        
+        // MEJORA DE ACCESIBILIDAD Y SEGURIDAD
+        iframe.title = title; // Título para lectores de pantalla
+        iframe.sandbox = "allow-scripts allow-same-origin"; // Aísla el iframe
+        
         iframeWrapper.appendChild(iframe);
         return iframeWrapper;
     }
 
     function updateView() {
-        mapContainer.innerHTML = '';
+        mapContainer.innerHTML = ''; // Limpia el contenedor
         if (dualMode) {
-            let map1Src;
-            let map2Src;
+            let map1Src, map2Src, title1, title2;
             
             if (currentView === 'simulador') {
                 map1Src = mapConfigs['simulador'];
+                title1 = "Simulador Segunda Vuelta 2025";
                 map2Src = mapConfigs['2025'];
+                title2 = "Elecciones 2025";
             } else {
                 map1Src = mapConfigs['2025'];
+                title1 = "Elecciones 2025";
                 map2Src = mapConfigs['2020'];
+                title2 = "Elecciones 2020";
             }
             
-            mapContainer.appendChild(createIframe(map1Src));
-            mapContainer.appendChild(createIframe(map2Src));
+            mapContainer.appendChild(createIframe(map1Src, title1));
+            mapContainer.appendChild(createIframe(map2Src, title2));
 
         } else {
             const src = mapConfigs[currentView];
             if (src) {
-                mapContainer.appendChild(createIframe(src));
+                const title = translations[currentLang][currentView === '2025' ? 'elections2025' : (currentView === '2020' ? 'elections2020' : 'simulator2025')];
+                mapContainer.appendChild(createIframe(src, title));
             }
         }
     }
 
     function setActiveNavItem() {
         navItems.forEach(item => item.classList.remove('active'));
-        if (currentView === '2025') {
-            document.getElementById('mapa2025Btn').classList.add('active');
-        } else if (currentView === '2020') {
-            document.getElementById('mapa2020Btn').classList.add('active');
-        } else if (currentView === 'simulador') {
-            document.getElementById('simuladorBtn').classList.add('active');
+        const activeBtn = document.getElementById(currentView === '2025' ? 'mapa2025Btn' : (currentView === '2020' ? 'mapa2020Btn' : 'simuladorBtn'));
+        if (activeBtn) {
+            activeBtn.classList.add('active');
         }
     }
 
@@ -381,6 +406,7 @@
         updateLanguage();
     }
 
+    // Event Listeners
     document.getElementById('mapa2025Btn').addEventListener('click', (e) => {
         e.preventDefault();
         dualMode = false;
@@ -410,6 +436,8 @@
     langSelect.addEventListener('change', (e) => {
         currentLang = e.target.value;
         updateLanguage();
+        // Actualizar la vista para que los títulos de los iframes también cambien de idioma
+        updateView();
     });
     
     // Initial setup
