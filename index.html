@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+<script>
+    // Script adicionado para que o site abra com zoom de 50% em celulares
+    if (window.matchMedia("only screen and (max-width: 768px)").matches) {
+        document.querySelector('meta[name="viewport"]').setAttribute('content', 'width=device-width, initial-scale=0.5');
+    }
+</script>
+
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; frame-src 'self'; img-src 'self' data:;">
 
 <title data-translate-key="pageTitle">Elecciones Bolivianas - Mapas Interativos</title>
