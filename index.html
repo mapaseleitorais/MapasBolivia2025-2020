@@ -358,7 +358,8 @@
         
         // MEJORA DE ACCESIBILIDAD Y SEGURIDAD
         iframe.title = title; // Título para lectores de pantalla
-        iframe.sandbox = "allow-scripts allow-same-origin"; // Aísla el iframe
+        // CORREÇÃO: Adicionado 'allow-modals' para permitir caixas de diálogo como alert() e confirm()
+        iframe.sandbox = "allow-scripts allow-same-origin allow-modals";
         
         iframeWrapper.appendChild(iframe);
         return iframeWrapper;
